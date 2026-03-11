@@ -1,9 +1,11 @@
 [project]
 name = "siads699-capstone"
 version = "0.1.0"
-description = "Add your description here"
+description = "Benchmarking protein language model embeddings for antibody titer prediction"
 readme = "README.md"
 requires-python = "~=3.11.0"
 dependencies = [
+    "ankh>=1.10.0",
+    "esm>=3.1.6",
     "pycaret[full]>=3.0.0",
 ]
