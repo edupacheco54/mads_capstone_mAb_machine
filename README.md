@@ -68,12 +68,12 @@ If you prefer conda, create an environment with Python 3.11 and install from req
 
 ### 1. Create the environment
 ```bash
-conda create -n siads699-capstone python=3.11
+conda create -n name_of_your_choice_here python=3.11
 ```
 
 ### 2. Activate it
 ```bash
-conda activate siads699-capstone
+conda activate name_of_your_choice_here
 ```
 
 ### 3. Install dependencies
