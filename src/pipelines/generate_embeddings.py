@@ -38,7 +38,7 @@ def generate_chain_embeddings(df, model_name, chain_name, sequence_col):
     """
 
     model_class = MODEL_REGISTRY[model_name]
-    model = model_class
+    model = model_class()
 
     embeddings = []
 
