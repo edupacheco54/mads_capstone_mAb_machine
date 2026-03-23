@@ -74,6 +74,7 @@ einops==0.8.2
 emoji==2.15.0
 entrypoints==0.4
 esm==3.1.6
+et-xmlfile==2.0.0
 evidently==0.4.40
 executing==2.2.1
 explainerdashboard==0.5.8
@@ -185,6 +186,7 @@ nltk==3.9.3
 numba==0.62.1
 numpy==1.24.4
 oauthlib==3.3.1
+openpyxl==3.1.5
 optuna==4.7.0
 orjson==3.11.7
 overrides==7.7.0

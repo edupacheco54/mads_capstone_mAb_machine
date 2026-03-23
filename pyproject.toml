@@ -7,5 +7,6 @@ requires-python = "~=3.11.0"
 dependencies = [
     "ankh>=1.10.0",
     "esm>=3.1.6",
+    "openpyxl>=3.1.5",
     "pycaret[full]>=3.0.0",
 ]
