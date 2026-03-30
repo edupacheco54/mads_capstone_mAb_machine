@@ -6,13 +6,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 DATA_EMBEDDINGS_DIR = PROJECT_ROOT / "data" / "embeddings"
 DATA_MODELING_DIR = PROJECT_ROOT / "data" / "modeling"
+DATA_TEST_DIR = PROJECT_ROOT / "data" / "test_data"
 
 CLEANED_DATA_PATH = DATA_PROCESSED_DIR / "antibody_developability_cleaned.csv"
+HOLDOUT_DATA_PATH = DATA_TEST_DIR / "cleaned_holdout_data.csv"
 
 RAW_SEQUENCE_COLS = ["vh_protein_sequence", "vl_protein_sequence"]
 
 
-def build_model_dataset(df_clean, model_name):
+def build_model_dataset(df_clean, model_name, embeddings_dir=None):
     """
     Build a model-ready dataset for a single protein language model.
 
@@ -23,6 +25,8 @@ def build_model_dataset(df_clean, model_name):
         features, raw sequence columns, and target.
     model_name : str
         Key from MODEL_REGISTRY indicating which model's embeddings to use.
+    embeddings_dir : Path, optional
+        Directory containing embedding pickle files. Defaults to DATA_EMBEDDINGS_DIR.
 
     Returns
     -------
@@ -31,8 +35,10 @@ def build_model_dataset(df_clean, model_name):
         VH and VL embedding columns.
     """
 
-    vh_path = DATA_EMBEDDINGS_DIR / f"{model_name}_vh.pkl"
-    vl_path = DATA_EMBEDDINGS_DIR / f"{model_name}_vl.pkl"
+    emb_dir = embeddings_dir if embeddings_dir is not None else DATA_EMBEDDINGS_DIR
+
+    vh_path = emb_dir / f"{model_name}_vh.pkl"
+    vl_path = emb_dir / f"{model_name}_vl.pkl"
 
     if not vh_path.exists():
         raise FileNotFoundError(f"Missing embedding file: {vh_path}")
@@ -62,7 +68,8 @@ def main():
     """
     Assemble and save model-ready datasets for each protein language model.
 
-    The resulting files contain:
+    Processes both the training data and the holdout data. The resulting files
+    contain:
     - identifiers
     - assay features
     - categorical features
@@ -72,16 +79,31 @@ def main():
     """
 
     DATA_MODELING_DIR.mkdir(parents=True, exist_ok=True)
+    holdout_modeling_dir = DATA_MODELING_DIR / "holdout"
+    holdout_modeling_dir.mkdir(parents=True, exist_ok=True)
 
-    df_clean = pd.read_csv(CLEANED_DATA_PATH)
+    holdout_embeddings_dir = DATA_EMBEDDINGS_DIR / "holdout"
 
-    for model_name in MODEL_REGISTRY:
-        output_path = DATA_MODELING_DIR / f"{model_name}_model_df.pkl"
+    datasets = [
+        ("train", CLEANED_DATA_PATH, DATA_EMBEDDINGS_DIR, DATA_MODELING_DIR),
+        ("holdout", HOLDOUT_DATA_PATH, holdout_embeddings_dir, holdout_modeling_dir),
+    ]
 
-        print(f"[RUN] Building model-ready dataset for {model_name}...")
-        df_model = build_model_dataset(df_clean=df_clean, model_name=model_name)
-        df_model.to_pickle(output_path)
-        print(f"[SAVE] {output_path}")
+    for dataset_name, data_path, embeddings_dir, output_dir in datasets:
+        print(f"\n[DATASET] {dataset_name}")
+        df_clean = pd.read_csv(data_path)
+
+        for model_name in MODEL_REGISTRY:
+            output_path = output_dir / f"{model_name}_model_df.pkl"
+
+            print(f"[RUN] Building model-ready dataset for {model_name}...")
+            df_model = build_model_dataset(
+                df_clean=df_clean,
+                model_name=model_name,
+                embeddings_dir=embeddings_dir,
+            )
+            df_model.to_pickle(output_path)
+            print(f"[SAVE] {output_path}")
 
 
 if __name__ == "__main__":

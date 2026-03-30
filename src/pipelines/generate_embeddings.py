@@ -8,8 +8,10 @@ from src.models import MODEL_REGISTRY
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 DATA_EMBEDDINGS_DIR = PROJECT_ROOT / "data" / "embeddings"
+DATA_TEST_DIR = PROJECT_ROOT / "data" / "test_data"
 
 CLEANED_DATA_PATH = DATA_PROCESSED_DIR / "antibody_developability_cleaned.csv"
+HOLDOUT_DATA_PATH = DATA_TEST_DIR / "cleaned_holdout_data.csv"
 
 CHAIN_CONFIG = {"vh": "vh_protein_sequence", "vl": "vl_protein_sequence"}
 
@@ -61,30 +63,40 @@ def main():
     """
     Generate and cache VH/VL embeddings for all configured protein language models.
 
-    If an embedding pickle file already exists, it is skipped to avoid
-    unnecessary recomputation.
+    Processes both the training data and the holdout data. If an embedding
+    pickle file already exists, it is skipped to avoid unnecessary recomputation.
     """
 
     DATA_EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
-    df = pd.read_csv(CLEANED_DATA_PATH)
+    holdout_embeddings_dir = DATA_EMBEDDINGS_DIR / "holdout"
+    holdout_embeddings_dir.mkdir(parents=True, exist_ok=True)
 
-    for model_name in MODEL_REGISTRY:
-        for chain_name, sequence_col in CHAIN_CONFIG.items():
-            output_path = DATA_EMBEDDINGS_DIR / f"{model_name}_{chain_name}.pkl"
+    datasets = [
+        ("train", CLEANED_DATA_PATH, DATA_EMBEDDINGS_DIR),
+        ("holdout", HOLDOUT_DATA_PATH, holdout_embeddings_dir),
+    ]
 
-            if output_path.exists():
-                print(f"[SKIP] {output_path.name} already exists")
-                continue
+    for dataset_name, data_path, output_dir in datasets:
+        print(f"\n[DATASET] {dataset_name}")
+        df = pd.read_csv(data_path)
 
-            print(f"[RUN] Generating {model_name} {chain_name} embeddings...")
-            embedding_df = generate_chain_embeddings(
-                df=df,
-                model_name=model_name,
-                chain_name=chain_name,
-                sequence_col=sequence_col,
-            )
-            embedding_df.to_pickle(output_path)
-            print(f"[SAVE] {output_path}")
+        for model_name in MODEL_REGISTRY:
+            for chain_name, sequence_col in CHAIN_CONFIG.items():
+                output_path = output_dir / f"{model_name}_{chain_name}.pkl"
+
+                if output_path.exists():
+                    print(f"[SKIP] {output_path.name} already exists")
+                    continue
+
+                print(f"[RUN] Generating {model_name} {chain_name} embeddings...")
+                embedding_df = generate_chain_embeddings(
+                    df=df,
+                    model_name=model_name,
+                    chain_name=chain_name,
+                    sequence_col=sequence_col,
+                )
+                embedding_df.to_pickle(output_path)
+                print(f"[SAVE] {output_path}")
 
 
 if __name__ == "__main__":
