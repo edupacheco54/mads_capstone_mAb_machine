@@ -10,16 +10,16 @@ __pycache__/
 *.pyc
 
 # data
-data/
-*.csv
-*.zip
+# data/
+# *.csv
+# *.zip
 
 # outputs
-models/
-outputs/
-*.png
-*.pkl
-*.pt
+# models/
+# outputs/
+# *.png
+# *.pkl
+# *.pt
 
 # OS junk
 .DS_Store
