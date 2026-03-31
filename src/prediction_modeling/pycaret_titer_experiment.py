@@ -38,6 +38,8 @@ except ImportError as exc:
         "  pip install pycaret\n"
         "or in conda:\n"
         "  conda install -c conda-forge pycaret\n"
+        "or in uv:\n"
+        "  uv add pycaret\n"
     ) from exc
 
 
