@@ -14,7 +14,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
 
-def do_hugging_face():
+def do_hugging_face(df, k,v):
     """
     Perform cross-validated Ridge regression on antibody embedding features to predict titer values.
 
@@ -36,17 +36,29 @@ def do_hugging_face():
     """
 
     fold_col = "hierarchical_cluster_IgG_isotype_stratified_fold"
-    target = 'Titer'
+    target = 'Titer' # HARDCODED
+    #k = name of LLM
 
-    X = "feature_colmns "
+    # Identify embedding columns — everything that's not metadata
+    meta_cols = [target, fold_col, "antibody_id",
+                 "vh_protein_sequence", "vl_protein_sequence"]
+    
+    embedding_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    X = df[embedding_cols].to_numpy(dtype=float)  # "feature_colmns "
+
+    # Diagnose NaNs before doing anything else
+    nan_mask = np.isnan(X)
+    print(f"[{k}] X shape: {X.shape}")
+    print(f"[{k}] Total NaNs in X: {nan_mask.sum()}")
+    print(f"[{k}] Rows with any NaN: {nan_mask.any(axis=1).sum()} / {X.shape[0]}")
+    print(f"[{k}] Cols with any NaN: {nan_mask.any(axis=0).sum()} / {X.shape[1]}")
+
     y = df[target].to_numpy(dtype=float)
-
+    fold_values = df[fold_col].to_numpy()
     # sanity check
     assert len(X) == len(df) == len(y)
 
-    fold_values = df[fold_col].to_numpy()
     unique_folds = [f for f in np.unique(fold_values) if f == f]  # drop NaN
-
     per_fold_stats = []
     y_pred_all = np.full(len(df), np.nan)   # align with df rows
     y_true_all = np.full(len(df), np.nan)   # optional, for plotting/metrics
@@ -87,7 +99,7 @@ def do_hugging_face():
 
     return None 
 
-def do_modeling(v):
+def do_modeling(v, k):
     """
     Load the raw IgG dataset, filter rows with valid titer values, and trigger
     cross-validated modeling via do_hugging_face().
@@ -97,17 +109,38 @@ def do_modeling(v):
     for Ridge regression cross-validation.
 
     Args:
-        v: Unused parameter. Reserved for future use or passed-in feature data.
-
+        v: LLM embedding vectors 
+        k: name of LLM
     Returns:
         None
     """
     print('---------------------------------------------------------')
-    # ['AC_SINS_pH6.0', 'AC-SINS_pH7.4']
+    # # ['AC_SINS_pH6.0', 'AC-SINS_pH7.4']
     og_df_ =  pd.read_csv("../../data/raw/GDPa1_246 IgGs_cleaned.csv")
-    og_df = og_df_.dropna(subset=['Titer'])
+    # print(f'og_df_ shape --> {[i for i in og_df_.columns if i.find("T") > -1 ]} ' )
+    # print(f'v_ shape --> {[i for i in v.columns if i.find("T") > -1 ]}')
+    og_df = og_df_ #.dropna(subset=['Titer'])
+    # v #= v.dropna(subset='Titer')
+    # merged = og_df.merge(v, on="antibody_id", how="inner")
+    # print(v.shape, og_df.shape, merged.shape)
+    # print(merged['Titer'].values[:100])
+    # #get_hugging = do_hugging_face(merged, k, v ) #(og_df, k, v )
 
-    get_hugging = do_hugging_face(og_df)
+
+
+    # Drop any columns in v that already exist in og_df (except the join key)
+    join_key = "antibody_name"  # ← adjust to your actual shared key column
+    cols_to_drop = [c for c in v.columns 
+                    if c in og_df.columns and c != join_key]
+    print(f"[{k}] Dropping duplicate cols from v before merge: {cols_to_drop}")
+    v_clean = v.drop(columns=cols_to_drop)
+
+    merged = og_df.merge(v_clean, on=join_key, how="inner")
+
+    print(f"[{k}] og_df: {og_df.shape}, v_clean: {v_clean.shape}, merged: {merged.shape}")
+    print(f"[{k}] Titer sample: {merged['Titer'].values[:5]}")  # sanity check
+
+    get_hugging = do_hugging_face(merged, k, v_clean)
 
     return None 
 
@@ -156,13 +189,13 @@ def driver():
     #load file 
     df_dict = load_pickles_to_df_dict("../../data/modeling")
 
-    for k,v in df_dict.items():
-        print(k, v.info() )
+    for k,v in df_dict.items(): # for each LLM embedding
+        print(k, v.columns )
 
         #explore / transform data
 
         #call model
-        get_model = do_modeling(v)
+        get_model = do_modeling(v, k)
         #compile results & save
 
     return "Complete"

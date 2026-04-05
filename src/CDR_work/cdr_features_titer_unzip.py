@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr
 import re
+from pathlib import Path
 
 # ── Amino acid lookup tables ────────────────────────────────────────────────
 # Kyte-Doolittle hydrophobicity
@@ -153,7 +154,7 @@ def spearman_vs_titer(df_feat, titer, label=''):
 
 # ── Main ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    df = pd.read_csv('/mnt/project/gdpa1_246_iggs_cleaned.csv')
+    df = pd.read_csv("/home/allen/mads_UMICH/capstone699_repo/data/raw/GDPa1_246 IgGs_cleaned.csv") 
 
     print(f"Dataset: {len(df)} antibodies, {df['Titer'].notna().sum()} with Titer")
     print()
@@ -170,6 +171,17 @@ if __name__ == '__main__':
     print(f"Feature matrix: {feat_df.shape[1]} features\n")
     print("Features:", list(feat_df.columns))
     print()
+
+    # Save for downstream combination with PLM embeddings
+    #feat_df.to_csv('/home/allen/mads_UMICH/capstone699_repo/data/modeling/cdr_features.csv', index=True)
+     
+    # Resolve output path relative to home directory
+    output_dir = Path.home() / 'mads_UMICH' / 'capstone699_repo' / 'data' / 'modeling'
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    feat_df.to_csv(output_dir / 'cdr_features_titer.csv', index=True)
+    print(f"Saved feature matrix to {output_dir / 'cdr_features_titer.csv'}\n")
+
 
     # Spearman correlations
     results = spearman_vs_titer(feat_df, df['Titer'])
