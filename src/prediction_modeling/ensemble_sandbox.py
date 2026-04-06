@@ -13,6 +13,8 @@ from scipy.stats import spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
 
 def do_hugging_face(df, k,v):
     """
@@ -69,6 +71,16 @@ def do_hugging_face(df, k,v):
 
         X_train, y_train = X[train_idx], y[train_idx]
         X_test,  y_test  = X[test_idx],  y[test_idx]
+
+        # Impute NaNs — fit on train only, apply to both
+        imputer = SimpleImputer(strategy="mean")
+        X_train = imputer.fit_transform(X_train)
+        X_test  = imputer.transform(X_test)
+
+        # Scale — fit on train only, apply to both
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test  = scaler.transform(X_test)
 
         lm = Ridge()
         lm.fit(X_train, y_train)
@@ -195,7 +207,10 @@ def driver():
         #explore / transform data
 
         #call model
+        
         get_model = do_modeling(v, k)
+        print(k)
+        print()
         #compile results & save
 
     return "Complete"
