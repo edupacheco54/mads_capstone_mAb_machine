@@ -4,134 +4,83 @@ import pandas as pd
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 50)
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 import argparse
 from pathlib import Path
 import sys
 
-from scipy.stats import spearmanr
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.linear_model import Ridge
-from sklearn.model_selection import train_test_split
+from sklearn.linear_model import Ridge, Lasso, ElasticNet
+from sklearn.svm import SVR
+from sklearn.cross_decomposition import PLSRegression
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
+from scipy.stats import spearmanr
 
-# def do_hugging_face(df, k,v):
-#     """
-#     Perform cross-validated Ridge regression on antibody embedding features to predict titer values.
-
-#     Adopted from:
-#     https://huggingface.co/blog/ginkgo-datapoints/making-antibody-embeddings-and-predictions
-
-#     Iterates over predefined hierarchical cluster folds, trains a Ridge regression model
-#     on each training split, evaluates on the held-out fold using Spearman correlation,
-#     and aggregates predictions across all folds. Prints per-fold and overall Spearman rho,
-#     and displays a scatter plot of true vs. predicted titer values.
-
-#     Args:
-#         df (pd.DataFrame): Input dataframe containing feature columns, a fold assignment
-#                            column ('hierarchical_cluster_IgG_isotype_stratified_fold'),
-#                            and a 'Titer' target column.
-
-#     Returns:
-#         None
-#     """
-#     fold_col = "hierarchical_cluster_IgG_isotype_stratified_fold"
-#     target = 'Titer' # HARDCODED
-#     #k = name of LLM
-
-
-#     #DROP COLUMNS
-#     drop_cols = ['Unnamed: 0', 'Purity', 'SEC %Monomer', 'SMAC', 'HIC', 'HAC', 'PR_CHO', 'PR_Ova', 'AC-SINS_pH6.0', 'highest_clinical_trial_asof_feb2025'
-#                  'AC-SINS_pH7.4', 'Tonset', 'Tm1', 'Tm2', 'hierarchical_cluster_fold', 'random_fold','n_missing_CDR_feature','est_status_asof_feb2025','lc_subtype','hc_subtype']
-
-#     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
-
-#     embedding_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-#     X = df[embedding_cols].to_numpy(dtype=float)
-
-
-
-#     # Identify embedding columns — everything that's not metadata
-#     meta_cols = [target, fold_col, "antibody_id",
-#                  "vh_protein_sequence", "vl_protein_sequence"]
+models = {
+    "ElasticNet": ElasticNet(),
     
-#     # Diagnose NaNs before doing anything else
-#     nan_mask = np.isnan(X)
-#     print(f"[{k}] X shape: {X.shape}")
-#     print(f"[{k}] Total NaNs in X: {nan_mask.sum()}")
-#     print(f"[{k}] Rows with any NaN: {nan_mask.any(axis=1).sum()} / {X.shape[0]}")
-#     print(f"[{k}] Cols with any NaN: {nan_mask.any(axis=0).sum()} / {X.shape[1]}")
+ 
+}
+ 
+# models = {
+#     "Ridge": Ridge(),
+# } #"SVR_rbf": SVR(kernel="rbf"),
+    # "Ridge": Ridge(),
+    # "Lasso": Lasso(),
+    # "ElasticNet": ElasticNet(),
 
-#     y = df[target].to_numpy(dtype=float)
-#     fold_values = df[fold_col].to_numpy()
-#     # sanity check
-#     assert len(X) == len(df) == len(y)
 
-#     unique_folds = [f for f in np.unique(fold_values) if f == f]  # drop NaN
-#     per_fold_stats = []
-#     y_pred_all = np.full(len(df), np.nan)   # align with df rows
-#     y_true_all = np.full(len(df), np.nan)   # optional, for plotting/metrics
+def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description=None):
+    """
+    Cross-validated modeling over hierarchical cluster folds for multiple model types.
 
-#     for f in unique_folds:
-#         test_idx = np.where(fold_values == f)[0]
-#         train_idx = np.where(fold_values != f)[0]
+    Args:
+        df (pd.DataFrame): merged dataframe with target/fold/features
+        k (str): LLM name
+        v (pd.DataFrame): embedding df (kept for compatibility with your existing call pattern)
+        remove_cdr_features (bool): if True, drop columns containing '_CDR_feature'
+        feature_set_description (str): label for results table
+            expected examples: 'CDR', 'prost_t5_model', 'CDR and prost_t5_model'
 
-#         X_train, y_train = X[train_idx], y[train_idx]
-#         X_test,  y_test  = X[test_idx],  y[test_idx]
-
-#         # Impute NaNs — fit on train only, apply to both
-#         imputer = SimpleImputer(strategy="mean")
-#         X_train = imputer.fit_transform(X_train)
-#         X_test  = imputer.transform(X_test)
-
-#         # Scale — fit on train only, apply to both
-#         scaler = StandardScaler()
-#         X_train = scaler.fit_transform(X_train)
-#         X_test  = scaler.transform(X_test)
-
-#         lm = Ridge()
-#         lm.fit(X_train, y_train)
-#         y_pred = lm.predict(X_test)
-
-#         # write back into the positions of df
-#         y_pred_all[test_idx] = y_pred
-#         y_true_all[test_idx] = y_test
-
-#         rho = spearmanr(y_test, y_pred).statistic
-#         per_fold_stats.append((int(f), rho, len(y_test)))
-
-#     # Overall metric across all rows that participated in CV
-#     mask = ~np.isnan(y_true_all)
-#     overall_rho = spearmanr(y_true_all[mask], y_pred_all[mask]).statistic
-
-#     print("Fold\tN\tSpearman_rho")
-#     for f, rho, n in per_fold_stats:
-#         print(f"{f}\t{n}\t{rho:.4f}")
-#     print(f"Overall (all folds)\t{mask.sum()}\t{overall_rho:.4f}")
-
-#     plt.figure()
-#     plt.scatter(y_true_all[mask], y_pred_all[mask], alpha=0.7)
-#     plt.title(f"Ridge CV over {fold_col}\nOverall Spearman: {overall_rho:.3f}")
-#     plt.xlabel(f"True {target}")
-#     plt.ylabel(f"Predicted {target}")
-#     plt.show()
-
-#     return None 
-
-def do_hugging_face(df, k, v):
+    Returns:
+        pd.DataFrame: per-model summary results
+    """
     fold_col = "hierarchical_cluster_IgG_isotype_stratified_fold"
-    target = 'Titer'
+    target = "Titer"
 
-    drop_cols = ['Unnamed: 0', 'Purity', 'SEC %Monomer', 'SMAC', 'HIC', 'HAC',
-                 'PR_CHO', 'PR_Ova', 'AC-SINS_pH6.0', 'highest_clinical_trial_asof_feb2025',
-                 'AC-SINS_pH7.4', 'Tonset', 'Tm1', 'Tm2', 'hierarchical_cluster_fold',
-                 'random_fold', 'n_missing_CDR_feature', 'est_status_asof_feb2025',
-                 'lc_subtype', 'hc_subtype']
-    df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+    drop_cols = [
+        "Unnamed: 0", "Purity", "SEC %Monomer", "SMAC", "HIC", "HAC",
+        "PR_CHO", "PR_Ova", "AC-SINS_pH6.0", "highest_clinical_trial_asof_feb2025",
+        "AC-SINS_pH7.4", "Tonset", "Tm1", "Tm2", "hierarchical_cluster_fold",
+        "random_fold", "n_missing_CDR_feature", "est_status_asof_feb2025",
+        "lc_subtype", "hc_subtype",
+        # raw seq / ids that should not enter numeric modeling
+        "antibody_name", "vh_protein_sequence", "hc_protein_sequence", "hc_dna_sequence",
+        "vl_protein_sequence", "lc_protein_sequence", "lc_dna_sequence",
+        "heavy_aligned_aho", "light_aligned_aho",
+    ]
 
+    df = df.drop(columns=[c for c in drop_cols if c in df.columns]).copy()
+
+    # Optional: remove all CDR feature columns for easy subsetting
+    if remove_cdr_features:
+        cdr_cols_to_remove = [c for c in df.columns if "_CDR_feature" in c]
+        df = df.drop(columns=cdr_cols_to_remove)
+        print(f"[{k}] Removed {len(cdr_cols_to_remove)} _CDR_feature columns")
+
+    # keep rows with non-missing target and fold
+    df = df[df[target].notna()].copy()
+    df = df[df[fold_col].notna()].copy()
+
+    # numeric features only, excluding target/fold
     embedding_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    embedding_cols = [c for c in embedding_cols if c not in [target, fold_col]]
+
     X = df[embedding_cols].to_numpy(dtype=float)
+    y = df[target].to_numpy(dtype=float)
+    fold_values = df[fold_col].to_numpy()
 
     nan_mask = np.isnan(X)
     print(f"[{k}] X shape: {X.shape}")
@@ -139,117 +88,102 @@ def do_hugging_face(df, k, v):
     print(f"[{k}] Rows with any NaN: {nan_mask.any(axis=1).sum()} / {X.shape[0]}")
     print(f"[{k}] Cols with any NaN: {nan_mask.any(axis=0).sum()} / {X.shape[1]}")
 
-    y = df[target].to_numpy(dtype=float)
-    fold_values = df[fold_col].to_numpy()
     assert len(X) == len(df) == len(y)
 
     unique_folds = [f for f in np.unique(fold_values) if f == f]
-    per_fold_stats = []
-    y_pred_all = np.full(len(df), np.nan)
-    y_true_all = np.full(len(df), np.nan)
-    coef_accumulator = np.zeros(X.shape[1])                          # ← ADD
 
-    for f in unique_folds:
-        test_idx  = np.where(fold_values == f)[0]
-        train_idx = np.where(fold_values != f)[0]
+    results_rows = []
 
-        X_train, y_train = X[train_idx], y[train_idx]
-        X_test,  y_test  = X[test_idx],  y[test_idx]
+    for model_name, model in models.items():
+        y_pred_all = np.full(len(df), np.nan)
+        y_true_all = np.full(len(df), np.nan)
+        per_fold_stats = []
 
-        imputer = SimpleImputer(strategy="mean")
-        X_train = imputer.fit_transform(X_train)
-        X_test  = imputer.transform(X_test)
+        for f in unique_folds:
+            test_idx = np.where(fold_values == f)[0]
+            train_idx = np.where(fold_values != f)[0]
 
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test  = scaler.transform(X_test)
+            X_train, y_train = X[train_idx], y[train_idx]
+            X_test, y_test = X[test_idx], y[test_idx]
 
-        lm = Ridge()
-        lm.fit(X_train, y_train)
-        y_pred = lm.predict(X_test)
+            imputer = SimpleImputer(strategy="mean")
+            X_train = imputer.fit_transform(X_train)
+            X_test = imputer.transform(X_test)
 
-        coef_accumulator += np.abs(lm.coef_)                         # ← ADD
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
 
-        y_pred_all[test_idx] = y_pred
-        y_true_all[test_idx] = y_test
-        rho = spearmanr(y_test, y_pred).statistic
-        per_fold_stats.append((int(f), rho, len(y_test)))
+            fitted_model = model.fit(X_train, y_train)
+            y_pred = fitted_model.predict(X_test)
 
-    # ── Average coefficients across folds ──────────────────────────────── ← ADD
-    mean_coef = coef_accumulator / len(unique_folds)                  # ← ADD
-    feature_importance = pd.Series(mean_coef, index=embedding_cols)  # ← ADD
+            # PLSRegression can return shape (n,1)
+            y_pred = np.asarray(y_pred).reshape(-1)
 
-    # ── CDR-specific importance (interpretable subset) ─────────────────── ← ADD
-    cdr_importance = (                                                 # ← ADD
-        feature_importance                                            # ← ADD
-        .filter(like="_CDR_feature")                                  # ← ADD
-        .sort_values(ascending=False)                                 # ← ADD
-    )                                                                 # ← ADD
-    print(f"\n[{k}] Top 10 CDR features by mean |coef|:")            # ← ADD
-    print(cdr_importance.head(10))                                    # ← ADD
+            y_pred_all[test_idx] = y_pred
+            y_true_all[test_idx] = y_test
 
-    # ── Overall CV results ─────────────────────────────────────────────────
-    mask = ~np.isnan(y_true_all)
-    overall_rho = spearmanr(y_true_all[mask], y_pred_all[mask]).statistic
-    print("\nFold\tN\tSpearman_rho")
-    for f, rho, n in per_fold_stats:
-        print(f"{f}\t{n}\t{rho:.4f}")
-    print(f"Overall (all folds)\t{mask.sum()}\t{overall_rho:.4f}")
+            fold_r2 = r2_score(y_test, y_pred)
+            fold_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            fold_rho = spearmanr(y_test, y_pred).statistic
+            per_fold_stats.append((int(f), fold_r2, fold_rmse, fold_rho, len(y_test)))
 
-    # ── Scatter plot ───────────────────────────────────────────────────────
-    plt.figure()
-    plt.scatter(y_true_all[mask], y_pred_all[mask], alpha=0.7)
-    plt.title(f"Ridge CV over {fold_col}\nOverall Spearman: {overall_rho:.3f}")
-    plt.xlabel(f"True {target}")
-    plt.ylabel(f"Predicted {target}")
-    plt.show()
+        mask = ~np.isnan(y_true_all)
+        overall_r2 = r2_score(y_true_all[mask], y_pred_all[mask])
+        overall_rmse = np.sqrt(mean_squared_error(y_true_all[mask], y_pred_all[mask]))
+        overall_rho = spearmanr(y_true_all[mask], y_pred_all[mask]).statistic
 
-    # ── CDR feature importance bar chart ──────────────────────────────── ← ADD
-    plt.figure(figsize=(10, 5))                                        # ← ADD
-    cdr_importance.plot(kind="bar")                                    # ← ADD
-    plt.title(f"[{k}] CDR Feature Importance (mean |Ridge coef| across folds)")  # ← ADD
-    plt.ylabel("Mean |coefficient|")                                   # ← ADD
-    plt.xticks(rotation=45, ha="right")                               # ← ADD
-    plt.tight_layout()                                                 # ← ADD
-    plt.show()                                                         # ← ADD
+        print(f"\n[{k}] {model_name}")
+        print("Fold\tN\tR2\tRMSE\tSpearman_rho")
+        for f, fold_r2, fold_rmse, fold_rho, n in per_fold_stats:
+            print(f"{f}\t{n}\t{fold_r2:.4f}\t{fold_rmse:.4f}\t{fold_rho:.4f}")
+        print(f"Overall\t{mask.sum()}\t{overall_r2:.4f}\t{overall_rmse:.4f}\t{overall_rho:.4f}")
 
-    return feature_importance                                          # ← ADD (was None)
+        results_rows.append({
+            "feature_set_description": feature_set_description if feature_set_description is not None else k,
+            "model_type": model_name,
+            "LLM_name": k,
+            "r_Squared": overall_r2,
+            "RMSE": overall_rmse,
+            "Spearman_rho":overall_rho,
+        })
 
-def do_modeling(v, k):
+    results_df = pd.DataFrame(results_rows)
+    return results_df
+
+def do_modeling(v, k, remove_cdr_features=False, feature_set_description=None):
     """
-    Load the raw IgG dataset, filter rows with valid titer values, and trigger
-    cross-validated modeling via do_hugging_face().
-
-    Reads the primary antibody dataset from a fixed CSV path, drops rows where
-    'Titer' is missing, and passes the cleaned dataframe to do_hugging_face()
-    for Ridge regression cross-validation.
+    Load raw GDPa1 data, merge with embedding/features df, and run CV modeling.
 
     Args:
-        v: LLM embedding vectors 
-        k: name of LLM
-    Returns:
-        None
-    """
-    print('---------------------------------------------------------')
-    # # ['AC_SINS_pH6.0', 'AC-SINS_pH7.4']
-    og_df_ =  pd.read_csv("../../data/raw/GDPa1_246 IgGs_cleaned.csv")
-    og_df = og_df_ #.dropna(subset=['Titer'])
+        v (pd.DataFrame): features/embeddings df
+        k (str): LLM name
+        remove_cdr_features (bool): whether to remove *_CDR_feature cols before modeling
+        feature_set_description (str): e.g. 'CDR', 'prot_t5_model', 'CDR and prot_t5_model'
 
-    # Drop any columns in v that already exist in og_df (except the join key)
+    Returns:
+        pd.DataFrame: results for this feature/model run
+    """
+    print("---------------------------------------------------------")
+    og_df_ = pd.read_csv("../../data/raw/GDPa1_246 IgGs_cleaned.csv")
+    og_df = og_df_
+
     join_key = "antibody_name"
     cols_to_drop = [c for c in v.columns if c in og_df.columns and c != join_key]
-    
-    #print(f"[{k}] Dropping duplicate cols from v before merge: {cols_to_drop}")
     v_clean = v.drop(columns=cols_to_drop)
+
     merged = og_df.merge(v_clean, on=join_key, how="inner")
     print(f"[{k}] og_df: {og_df.shape}, v_clean: {v_clean.shape}, merged: {merged.shape}")
-    
-    get_hugging = do_hugging_face(merged, k, v_clean)
 
-    return None 
+    run_results = do_hugging_face(
+        merged,
+        k,
+        v_clean,
+        remove_cdr_features=remove_cdr_features,
+        feature_set_description=feature_set_description,
+    )
 
-
-
+    return run_results
 
 def load_pickles_to_df_dict(folder_path: str) -> dict:
     """
@@ -289,6 +223,10 @@ def load_pickles_to_df_dict(folder_path: str) -> dict:
     
     return out
 
+
+
+
+
 def driver():
     """
     Orchestrate the full modeling pipeline: data loading, exploration, modeling,
@@ -305,18 +243,30 @@ def driver():
     #load file 
     df_dict = load_pickles_to_df_dict("../../data/modeling")
 
+    final_results = pd.DataFrame(columns=[
+    "feature_set_description",
+    "model_type",
+    "LLM_name",
+    "r_Squared",
+    "RMSE",
+    "Spearman_rho",])
+
     for k,v in df_dict.items(): # for each LLM embedding
-        print(k, len(v.columns) )
+        #do_cdr
+        run_cdr = do_modeling(v,k, remove_cdr_features=False, feature_set_description=f"CDR and {k}",)
+        final_results = pd.concat([final_results, run_cdr], ignore_index=True)
 
-        #explore / transform data
+        #do_non_cdr
+        run_non_cdr = do_modeling(v,k, remove_cdr_features=True, feature_set_description=k,)
+        final_results = pd.concat([final_results, run_non_cdr], ignore_index=True)
 
-        #call model
-        
-        get_model = do_modeling(v, k)
-        print(k)
-        print()
+
         #compile results & save
+    final_results = final_results.sort_values(by=["feature_set_description", "RMSE","Spearman_rho"],ascending=[True, True, True]).reset_index(drop=True)
+    print(final_results.head(3))
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 
+    final_results.to_csv(f"../../data/modeling/final_results_{timestamp}.csv", index=False)
     return "Complete"
 
 
