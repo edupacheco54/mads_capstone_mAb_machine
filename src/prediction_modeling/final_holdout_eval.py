@@ -6,6 +6,9 @@ import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from scipy.stats import spearmanr
 from sklearn.ensemble import GradientBoostingRegressor
+import json
+from sklearn.linear_model import Ridge, Lasso, ElasticNet
+from sklearn.svm import SVR
 
 # repo-aware import
 current = Path(__file__).resolve()
@@ -16,13 +19,22 @@ for parent in [current] + list(current.parents):
 
 from CDR_work.cdr_feature_utils import build_feature_matrix
 
+MODEL_REGISTRY = {
+    "Ridge":      Ridge,
+    "Lasso":      lambda **kw: Lasso(random_state=42, **kw),
+    "ElasticNet": lambda **kw: ElasticNet(random_state=42, **kw),
+    "SVR_rbf":    lambda **kw: SVR(kernel="rbf", **kw),
+}
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--train-data", required=True)
     parser.add_argument("--holdout-data", required=True)
+    parser.add_argument("--model-name", default="Ridge",
+        choices=["Ridge", "Lasso", "ElasticNet", "SVR_rbf"])
+    parser.add_argument("--model-params", default="{}", type=str,
+        help='JSON string of params e.g. \'{"alpha": 10}\'')
     return parser.parse_args()
-
 
 def compute_metrics(y_true, y_pred):
     return {
@@ -33,7 +45,7 @@ def compute_metrics(y_true, y_pred):
     }
 
 
-def main(train_path, holdout_path):
+def main(train_path, holdout_path, model_name="Ridge", model_params="{}"):
     print("[INFO] Loading data...")
 
     train_df = pd.read_csv(train_path)
@@ -64,8 +76,10 @@ def main(train_path, holdout_path):
     y_holdout = holdout_model_df["Titer"]
 
     print("[INFO] Training model on full dataset...")
-    model = GradientBoostingRegressor(random_state=42)
+    params = json.loads(model_params)
+    model = MODEL_REGISTRY[model_name](**params)
     model.fit(X_train, y_train)
+     
 
     print("[INFO] Evaluating on holdout...")
     preds = model.predict(X_holdout)
@@ -80,3 +94,14 @@ def main(train_path, holdout_path):
 if __name__ == "__main__":
     args = parse_args()
     main(args.train_data, args.holdout_data)
+
+'''
+Call it using the best row from final_results CSV:
+
+python final_holdout_eval.py \
+    --train-data ../../data/raw/GDPa1_246\ IgGs_cleaned.csv \
+    --holdout-data ../../data/test_data/cleaned_holdout_data_with_aho.csv \
+    --model-name Ridge \
+    --model-params '{"alpha": 10}'
+
+'''

@@ -17,22 +17,20 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import spearmanr
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import KFold 
+ 
+inner_cv = KFold(n_splits=3, shuffle=True, random_state=42)
 
 models = {
-    "ElasticNet": ElasticNet(),
-    
- 
+    "Ridge":      GridSearchCV(Ridge(),                        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=inner_cv, scoring="r2"),
+    "SVR_rbf":    GridSearchCV(SVR(kernel="rbf"),              {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]}, cv=inner_cv, scoring="r2"),
+    "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [0.01, 0.1, 1, 10]}, cv=inner_cv, scoring="r2"),
+    "ElasticNet": GridSearchCV(ElasticNet(random_state=42),    {"alpha": [0.01, 0.1, 1], "l1_ratio": [0.1, 0.5, 0.9]}, cv=inner_cv, scoring="r2"),
 }
- 
-# models = {
-#     "Ridge": Ridge(),
-# } #"SVR_rbf": SVR(kernel="rbf"),
-    # "Ridge": Ridge(),
-    # "Lasso": Lasso(),
-    # "ElasticNet": ElasticNet(),
 
 
-def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description=None):
+def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, feature_set_description=None, models=None):
     """
     Cross-validated modeling over hierarchical cluster folds for multiple model types.
 
@@ -70,6 +68,13 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description
         df = df.drop(columns=cdr_cols_to_remove)
         print(f"[{k}] Removed {len(cdr_cols_to_remove)} _CDR_feature columns")
 
+    #  
+    if keep_cdr_only:
+        non_cdr_cols = [c for c in df.columns if "_CDR_feature" not in c
+                        and c not in [target, fold_col]]
+        df = df.drop(columns=non_cdr_cols)
+        print(f"[{k}] Keeping CDR features only, dropped {len(non_cdr_cols)} non-CDR columns")
+
     # keep rows with non-missing target and fold
     df = df[df[target].notna()].copy()
     df = df[df[fold_col].notna()].copy()
@@ -91,8 +96,10 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description
     assert len(X) == len(df) == len(y)
 
     unique_folds = [f for f in np.unique(fold_values) if f == f]
-
     results_rows = []
+
+    if models is None:
+        models = {"Ridge": Ridge()}
 
     for model_name, model in models.items():
         y_pred_all = np.full(len(df), np.nan)
@@ -115,6 +122,9 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description
             X_test = scaler.transform(X_test)
 
             fitted_model = model.fit(X_train, y_train)
+            # ADD: capture best params if GridSearchCV
+            best_params = fitted_model.best_params_ if hasattr(fitted_model, "best_params_") else {}
+
             y_pred = fitted_model.predict(X_test)
 
             # PLSRegression can return shape (n,1)
@@ -126,16 +136,18 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description
             fold_r2 = r2_score(y_test, y_pred)
             fold_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
             fold_rho = spearmanr(y_test, y_pred).statistic
-            per_fold_stats.append((int(f), fold_r2, fold_rmse, fold_rho, len(y_test)))
+            per_fold_stats.append((int(f), fold_r2, fold_rmse, fold_rho, len(y_test), best_params))
 
         mask = ~np.isnan(y_true_all)
         overall_r2 = r2_score(y_true_all[mask], y_pred_all[mask])
         overall_rmse = np.sqrt(mean_squared_error(y_true_all[mask], y_pred_all[mask]))
         overall_rho = spearmanr(y_true_all[mask], y_pred_all[mask]).statistic
+        all_best_params = [p for *_, p in per_fold_stats]
+
 
         print(f"\n[{k}] {model_name}")
         print("Fold\tN\tR2\tRMSE\tSpearman_rho")
-        for f, fold_r2, fold_rmse, fold_rho, n in per_fold_stats:
+        for f, fold_r2, fold_rmse, fold_rho, n, best_params in per_fold_stats:
             print(f"{f}\t{n}\t{fold_r2:.4f}\t{fold_rmse:.4f}\t{fold_rho:.4f}")
         print(f"Overall\t{mask.sum()}\t{overall_r2:.4f}\t{overall_rmse:.4f}\t{overall_rho:.4f}")
 
@@ -145,13 +157,14 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, feature_set_description
             "LLM_name": k,
             "r_Squared": overall_r2,
             "RMSE": overall_rmse,
-            "Spearman_rho":overall_rho,
-        })
+            "Spearman_rho": overall_rho,
+            "best_params_per_fold": str(all_best_params),
+                            })
 
     results_df = pd.DataFrame(results_rows)
     return results_df
 
-def do_modeling(v, k, remove_cdr_features=False, feature_set_description=None):
+def do_modeling(v, k, remove_cdr_features=False, keep_cdr_only=False, feature_set_description=None, models=None):
     """
     Load raw GDPa1 data, merge with embedding/features df, and run CV modeling.
 
@@ -176,11 +189,11 @@ def do_modeling(v, k, remove_cdr_features=False, feature_set_description=None):
     print(f"[{k}] og_df: {og_df.shape}, v_clean: {v_clean.shape}, merged: {merged.shape}")
 
     run_results = do_hugging_face(
-        merged,
-        k,
-        v_clean,
+        merged, k, v_clean,
         remove_cdr_features=remove_cdr_features,
+        keep_cdr_only=keep_cdr_only,          # ← add this line
         feature_set_description=feature_set_description,
+        models=models
     )
 
     return run_results
@@ -249,19 +262,31 @@ def driver():
     "LLM_name",
     "r_Squared",
     "RMSE",
-    "Spearman_rho",])
+    "Spearman_rho",
+    "best_params_per_fold",])
 
+    models = {
+        "Ridge":      GridSearchCV(Ridge(),                        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=inner_cv, scoring="r2"),
+        "SVR_rbf":    GridSearchCV(SVR(kernel="rbf"),              {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]}, cv=inner_cv, scoring="r2"),
+        "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [0.01, 0.1, 1, 10]}, cv=inner_cv, scoring="r2"),
+        "ElasticNet": GridSearchCV(ElasticNet(random_state=42),    {"alpha": [0.01, 0.1, 1], "l1_ratio": [0.1, 0.5, 0.9]}, cv=inner_cv, scoring="r2"),}
+    
     for k,v in df_dict.items(): # for each LLM embedding
         #do_cdr
-        run_cdr = do_modeling(v,k, remove_cdr_features=False, feature_set_description=f"CDR and {k}",)
+        run_cdr = do_modeling(v,k, remove_cdr_features=False, feature_set_description=f"CDR and {k}", models=models)
         final_results = pd.concat([final_results, run_cdr], ignore_index=True)
 
         #do_non_cdr
-        run_non_cdr = do_modeling(v,k, remove_cdr_features=True, feature_set_description=k,)
+        run_non_cdr = do_modeling(v,k, remove_cdr_features=True, feature_set_description=k, models=models)
         final_results = pd.concat([final_results, run_non_cdr], ignore_index=True)
 
+    first_k, first_v = next(iter(df_dict.items()))
+    run_cdr_only = do_modeling(first_v, "CDR_only",
+        remove_cdr_features=True,   # drops PLM embeddings
+        feature_set_description="CDR_only", models=models)
+    final_results = pd.concat([final_results, run_cdr_only], ignore_index=True)
 
-        #compile results & save
+    #compile results & save
     final_results = final_results.sort_values(by=["feature_set_description", "RMSE","Spearman_rho"],ascending=[True, True, True]).reset_index(drop=True)
     print(final_results.head(3))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
