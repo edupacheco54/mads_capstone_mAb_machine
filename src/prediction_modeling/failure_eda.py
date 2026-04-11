@@ -13,11 +13,11 @@ Usage:
         --out-dir      ../../data/modeling/failure_eda
 
 Usage:
-    python failure_eda.py \
-        --failure-csv  ../../data/modeling/failure_overlap_20260410_2127.csv \
-        --gdpa1-csv    "../../data/raw/GDPa1_246 IgGs_cleaned.csv" \
-        --cdr-csv      ../../data/modeling/cdr_features_titer.csv \
-        --out-dir      ../../data/modeling/failure_eda
+python failure_eda.py \
+--failure-csv  ../../data/modeling/failure_overlap_20260410_2127.csv \
+--gdpa1-csv    "../../data/raw/GDPa1_246 IgGs_cleaned.csv" \
+--cdr-csv      ../../data/modeling/cdr_features_titer.csv \
+--out-dir      ../../data/modeling/failure_eda
 
 Outputs (in --out-dir):
     gdpa1_with_failure_flags.csv    full 246-row dataframe with all error/flag cols appended
