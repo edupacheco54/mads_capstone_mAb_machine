@@ -1,0 +1,12 @@
+feature_set_description,model_type,LLM_name,r_Squared,RMSE,Spearman_rho,best_params_per_fold
+CDR and ankh_model,Lasso,ankh_model,0.2885200222120232,103.34433855172907,0.5118371536731114,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+CDR and esmc_model,Lasso,esmc_model,0.26279983762034453,105.19571737798923,0.5127693929340404,"[{'alpha': 10}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+CDR and prost_t5_model,Lasso,prost_t5_model,0.25505894933155626,105.74657306794337,0.48074361193058607,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+CDR and prot_t5_model,Lasso,prot_t5_model,0.2970380789946083,102.72384068312321,0.5335265505656436,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+CDR and protbert_model,Lasso,protbert_model,0.2928296517315514,103.0308706276039,0.551468969759251,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+CDR_only,Lasso,CDR_only,0.2877585812685236,103.39962441378937,0.5351875275420935,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+ankh_model,Lasso,ankh_model,0.283084423907761,103.7383549043338,0.5104284658695861,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+esmc_model,Lasso,esmc_model,0.2541856236344544,105.8085404871197,0.5212496495584453,"[{'alpha': 10}, {'alpha': 12}, {'alpha': 11}, {'alpha': 12}, {'alpha': 12}]"
+prost_t5_model,Lasso,prost_t5_model,0.2379152978899406,106.95644769095266,0.46822233325762813,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+prot_t5_model,Lasso,prot_t5_model,0.2877585812685236,103.39962441378937,0.5351875275420935,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"
+protbert_model,Lasso,protbert_model,0.2647524387424267,105.05631055235067,0.546580097859528,"[{'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}, {'alpha': 12}]"

@@ -22,15 +22,20 @@ from sklearn.model_selection import KFold
  
 inner_cv = KFold(n_splits=3, shuffle=True, random_state=42)
 
+# models = {
+#     "Ridge":      GridSearchCV(Ridge(),                        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=inner_cv, scoring="r2"),
+#     "SVR_rbf":    GridSearchCV(SVR(kernel="rbf"),              {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]}, cv=inner_cv, scoring="r2"),
+#     "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [0.01, 0.1, 1, 10]}, cv=inner_cv, scoring="r2"),
+#     "ElasticNet": GridSearchCV(ElasticNet(random_state=42),    {"alpha": [0.01, 0.1, 1], "l1_ratio": [0.1, 0.5, 0.9]}, cv=inner_cv, scoring="r2"),
+# }
+
 models = {
-    "Ridge":      GridSearchCV(Ridge(),                        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=inner_cv, scoring="r2"),
-    "SVR_rbf":    GridSearchCV(SVR(kernel="rbf"),              {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]}, cv=inner_cv, scoring="r2"),
-    "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [0.01, 0.1, 1, 10]}, cv=inner_cv, scoring="r2"),
-    "ElasticNet": GridSearchCV(ElasticNet(random_state=42),    {"alpha": [0.01, 0.1, 1], "l1_ratio": [0.1, 0.5, 0.9]}, cv=inner_cv, scoring="r2"),
+ 
+    "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [10, 15]}, cv=inner_cv, scoring="r2"),
+ 
 }
 
-
-def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, feature_set_description=None, models=None):
+def do_hugging_face(df, k, v, remove_cdr_features=False, use_only_cdr_features=False, keep_cdr_only=False, feature_set_description=None, models=None):
     """
     Cross-validated modeling over hierarchical cluster folds for multiple model types.
 
@@ -48,7 +53,7 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, fe
     fold_col = "hierarchical_cluster_IgG_isotype_stratified_fold"
     target = "Titer"
 
-    drop_cols = [
+    drop_cols = ["Unnamed: 0_CDR_feature", 
         "Unnamed: 0", "Purity", "SEC %Monomer", "SMAC", "HIC", "HAC",
         "PR_CHO", "PR_Ova", "AC-SINS_pH6.0", "highest_clinical_trial_asof_feb2025",
         "AC-SINS_pH7.4", "Tonset", "Tm1", "Tm2", "hierarchical_cluster_fold",
@@ -57,7 +62,7 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, fe
         # raw seq / ids that should not enter numeric modeling
         "antibody_name", "vh_protein_sequence", "hc_protein_sequence", "hc_dna_sequence",
         "vl_protein_sequence", "lc_protein_sequence", "lc_dna_sequence",
-        "heavy_aligned_aho", "light_aligned_aho",
+        "heavy_aligned_aho", "light_aligned_aho",'n_missing',
     ]
 
     df = df.drop(columns=[c for c in drop_cols if c in df.columns]).copy()
@@ -82,6 +87,15 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, fe
     # numeric features only, excluding target/fold
     embedding_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     embedding_cols = [c for c in embedding_cols if c not in [target, fold_col]]
+    cdr_cols = [c for c in embedding_cols if "_CDR_feature" in c]
+
+    if use_only_cdr_features:
+        embedding_cols = cdr_cols
+    elif remove_cdr_features:
+        embedding_cols = [c for c in embedding_cols if c not in cdr_cols]
+
+    print(f"[{k}] n_features used: {len(embedding_cols)}")
+    print(f"[{k}] first 10 features: {embedding_cols[:10]}")
 
     X = df[embedding_cols].to_numpy(dtype=float)
     y = df[target].to_numpy(dtype=float)
@@ -113,7 +127,7 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, fe
             X_train, y_train = X[train_idx], y[train_idx]
             X_test, y_test = X[test_idx], y[test_idx]
 
-            imputer = SimpleImputer(strategy="mean")
+            imputer = SimpleImputer(strategy="mean") #Was mean prior to 4/10/26
             X_train = imputer.fit_transform(X_train)
             X_test = imputer.transform(X_test)
 
@@ -164,7 +178,7 @@ def do_hugging_face(df, k, v, remove_cdr_features=False, keep_cdr_only=False, fe
     results_df = pd.DataFrame(results_rows)
     return results_df
 
-def do_modeling(v, k, remove_cdr_features=False, keep_cdr_only=False, feature_set_description=None, models=None):
+def do_modeling_(v, k, remove_cdr_features=False, keep_cdr_only=False, feature_set_description=None, models=None):
     """
     Load raw GDPa1 data, merge with embedding/features df, and run CV modeling.
 
@@ -185,6 +199,9 @@ def do_modeling(v, k, remove_cdr_features=False, keep_cdr_only=False, feature_se
     cols_to_drop = [c for c in v.columns if c in og_df.columns and c != join_key]
     v_clean = v.drop(columns=cols_to_drop)
 
+    print(f"[{k}] embedding cols sample: {v.columns[:5].tolist()}")
+    print(f"[{k}] has antibody_name in embeddings? {'antibody_name' in v.columns}")
+
     merged = og_df.merge(v_clean, on=join_key, how="inner")
     print(f"[{k}] og_df: {og_df.shape}, v_clean: {v_clean.shape}, merged: {merged.shape}")
 
@@ -198,7 +215,58 @@ def do_modeling(v, k, remove_cdr_features=False, keep_cdr_only=False, feature_se
 
     return run_results
 
-def load_pickles_to_df_dict(folder_path: str) -> dict:
+def do_modeling(v, k, remove_cdr_features=False, use_only_cdr_features=False, feature_set_description=None, models=None):
+    """
+    Load raw GDPa1 data, merge with embedding/features df, and run CV modeling.
+    """
+    print("---------------------------------------------------------")
+    og_df = pd.read_csv("../../data/raw/GDPa1_246 IgGs_cleaned.csv")
+
+    # Load CDR features and merge safely by antibody_name
+    cdr_features = pd.read_csv("../../data/modeling/cdr_features_titer.csv")
+    cdr_feature_cols = [c for c in cdr_features.columns if c != "antibody_name"]
+    cdr_features = cdr_features.rename(
+        columns={c: f"{c}_CDR_feature" for c in cdr_feature_cols}
+    )
+
+    print(f"[{k}] embedding cols sample: {v.columns[:5].tolist()}")
+    print(f"[{k}] has antibody_name in embeddings? {'antibody_name' in v.columns}")
+
+
+    before_n = len(og_df)
+    og_df = og_df.merge(cdr_features, on="antibody_name", how="left", validate="one_to_one")
+    after_n = len(og_df)
+
+    if before_n != after_n:
+        raise ValueError(f"og_df row count changed after CDR merge ({before_n} -> {after_n})")
+
+    added_cdr_cols = [c for c in og_df.columns if c.endswith("_CDR_feature")]
+    missing_cdr_rows = og_df[added_cdr_cols].isna().all(axis=1).sum()
+    print(f"[{k}] merged {len(added_cdr_cols)} CDR cols into og_df; rows with all CDR missing = {missing_cdr_rows}")
+
+    join_key = "antibody_name"
+
+    # Drop overlapping columns from embeddings only if they overlap and are not the join key
+    cols_to_drop = [c for c in v.columns if c in og_df.columns and c != join_key]
+    v_clean = v.drop(columns=cols_to_drop)
+
+    # Keep your existing merge behavior here
+    merged = og_df.merge(v_clean, on=join_key, how="inner")
+    print(f"[{k}] og_df: {og_df.shape}, v_clean: {v_clean.shape}, merged: {merged.shape}")
+
+    run_results = do_hugging_face(
+        merged,
+        k,
+        v_clean,
+        remove_cdr_features=remove_cdr_features,
+        feature_set_description=feature_set_description,
+        models=models,
+        use_only_cdr_features=use_only_cdr_features,
+    )
+
+    return run_results
+
+def load_pickles_to_df_dict_(folder_path: str) -> dict: #OG
     """
     Load all .pkl files in a folder into pandas DataFrames.
 
@@ -236,9 +304,72 @@ def load_pickles_to_df_dict(folder_path: str) -> dict:
     
     return out
 
+def load_pickles_to_df_dict2(folder_path: str) -> dict: #verify the CDR-feature alignment by merging on antibody_name
+    """
+    Load all .pkl files in a folder into pandas DataFrames.
 
+    Returns:
+        dict: {file_key: DataFrame}
+              where file_key strips '_df' and extension
+              e.g. esmc_model_df.pkl -> 'esmc_model'
+    """
+    cdr_features = pd.read_csv(r"../../data/modeling/cdr_features_titer.csv")
 
+    # Keep join key unchanged; suffix only actual CDR feature columns
+    cdr_feature_cols = [c for c in cdr_features.columns if c != "antibody_name"]
+    cdr_features = cdr_features.rename(
+        columns={c: f"{c}_CDR_feature" for c in cdr_feature_cols}
+    )
 
+    folder = Path(folder_path)
+    out = {}
+
+    for p in folder.glob("*.pkl"):
+        try:
+            df = pd.read_pickle(p)
+
+            if isinstance(df, pd.DataFrame):
+                key = p.stem.replace("_df", "")
+
+                if "antibody_name" not in df.columns:
+                    raise ValueError(f"{p.name} is missing antibody_name, cannot merge CDR features safely.")
+
+                before_n = len(df)
+                df = df.merge(cdr_features, on="antibody_name", how="left", validate="one_to_one")
+
+                after_n = len(df)
+                if before_n != after_n:
+                    raise ValueError(f"{p.name}: row count changed after merge ({before_n} -> {after_n})")
+
+                cdr_added = [c for c in df.columns if c.endswith("_CDR_feature")]
+                missing_cdr_rows = df[cdr_added].isna().all(axis=1).sum()
+                print(f"{p.name}: merged {len(cdr_added)} CDR cols; rows with all CDR missing = {missing_cdr_rows}")
+
+                out[key] = df
+
+        except Exception as e:
+            print(f"Skipping {p.name}: {e}")
+
+    return out
+
+def load_pickles_to_df_dict(folder_path: str) -> dict:
+    cdr_features = pd.read_csv(r"../../data/modeling/cdr_features_titer.csv")
+    cdr_num_cols = [c for c in cdr_features.columns if c not in ('antibody_name', 'Unnamed: 0')]
+    cdr_to_merge = cdr_features[['antibody_name'] + cdr_num_cols].add_suffix("_CDR_feature")
+    cdr_to_merge = cdr_to_merge.rename(columns={'antibody_name_CDR_feature': 'antibody_name'})
+
+    folder = Path(folder_path)
+    out = {}
+    for p in folder.glob("*.pkl"):
+        try:
+            df = pd.read_pickle(p)
+            if isinstance(df, pd.DataFrame):
+                key = p.stem.replace("_df", "")
+                df = df.merge(cdr_to_merge, on='antibody_name', how='left')
+                out[key] = df
+        except Exception as e:
+            print(f"Skipping {p.name}: {e}")
+    return out
 
 def driver():
     """
@@ -265,12 +396,16 @@ def driver():
     "Spearman_rho",
     "best_params_per_fold",])
 
-    models = {
-        "Ridge":      GridSearchCV(Ridge(),                        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=inner_cv, scoring="r2"),
-        "SVR_rbf":    GridSearchCV(SVR(kernel="rbf"),              {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]}, cv=inner_cv, scoring="r2"),
-        "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [0.01, 0.1, 1, 10]}, cv=inner_cv, scoring="r2"),
-        "ElasticNet": GridSearchCV(ElasticNet(random_state=42),    {"alpha": [0.01, 0.1, 1], "l1_ratio": [0.1, 0.5, 0.9]}, cv=inner_cv, scoring="r2"),}
+    # models = {
+    #     "Ridge":      GridSearchCV(Ridge(),                        {"alpha": [0.01, 0.1, 1, 10, 100]}, cv=inner_cv, scoring="r2"),
+    #     "SVR_rbf":    GridSearchCV(SVR(kernel="rbf"),              {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]}, cv=inner_cv, scoring="r2"),
+    #     "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [0.01, 0.1, 1, 10]}, cv=inner_cv, scoring="r2"),
+    #     "ElasticNet": GridSearchCV(ElasticNet(random_state=42),    {"alpha": [0.01, 0.1, 1], "l1_ratio": [0.1, 0.5, 0.9]}, cv=inner_cv, scoring="r2"),}
     
+    models = {
+        "Lasso":      GridSearchCV(Lasso(random_state=42),         {"alpha": [10,12,15]}, cv=inner_cv, scoring="r2"),}
+
+
     for k,v in df_dict.items(): # for each LLM embedding
         #do_cdr
         run_cdr = do_modeling(v,k, remove_cdr_features=False, feature_set_description=f"CDR and {k}", models=models)
@@ -281,9 +416,13 @@ def driver():
         final_results = pd.concat([final_results, run_non_cdr], ignore_index=True)
 
     first_k, first_v = next(iter(df_dict.items()))
-    run_cdr_only = do_modeling(first_v, "CDR_only",
-        remove_cdr_features=True,   # drops PLM embeddings
-        feature_set_description="CDR_only", models=models)
+    run_cdr_only = do_modeling(
+        first_v,
+        "CDR_only",
+        use_only_cdr_features=True,
+        feature_set_description="CDR_only",
+        models=models
+    )
     final_results = pd.concat([final_results, run_cdr_only], ignore_index=True)
 
     #compile results & save

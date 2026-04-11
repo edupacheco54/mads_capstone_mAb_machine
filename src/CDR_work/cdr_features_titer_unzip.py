@@ -168,6 +168,9 @@ if __name__ == '__main__':
         feat_rows.append(build_features(row))
 
     feat_df = pd.DataFrame(feat_rows, index=df.index)
+    # ── Attach antibody_name as explicit join key ───────────────────────────
+    feat_df.insert(0, 'antibody_name', df['antibody_name'].values)
+
     print(f"Feature matrix: {feat_df.shape[1]} features\n")
     print("Features:", list(feat_df.columns))
     print()
