@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-pd.set_option('display.max_rows', 500)
-pd.set_option('display.max_columns', 50)
+
+pd.set_option("display.max_rows", 500)
+pd.set_option("display.max_columns", 50)
 from datetime import datetime
 from pathlib import Path
 
@@ -12,8 +13,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import spearmanr
 from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.decomposition import PCA
 
 inner_cv = KFold(n_splits=3, shuffle=True, random_state=42)
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def do_hugging_face(df, k, feature_set_description=None, models=None):
@@ -30,22 +34,42 @@ def do_hugging_face(df, k, feature_set_description=None, models=None):
         oof_predictions : dict { base_learner_key -> {y_pred_oof, y_true_oof, spearman_rho} }
     """
     fold_col = "hierarchical_cluster_IgG_isotype_stratified_fold"
-    target   = "Titer"
+    target = "Titer"
 
     drop_cols = [
-        "Unnamed: 0_CDR_feature", "Unnamed: 0",
+        "Unnamed: 0_CDR_feature",
+        "Unnamed: 0",
         # downstream assay readouts — causal descendants of Titer, must be excluded
-        "Purity", "SEC %Monomer", "SMAC", "HIC", "HAC",
-        "PR_CHO", "PR_Ova", "AC-SINS_pH6.0", "AC-SINS_pH7.4",
-        "Tonset", "Tm1", "Tm2",
+        "Purity",
+        "SEC %Monomer",
+        "SMAC",
+        "HIC",
+        "HAC",
+        "PR_CHO",
+        "PR_Ova",
+        "AC-SINS_pH6.0",
+        "AC-SINS_pH7.4",
+        "Tonset",
+        "Tm1",
+        "Tm2",
         # fold / metadata columns
-        "highest_clinical_trial_asof_feb2025", "hierarchical_cluster_fold",
-        "random_fold", "n_missing_CDR_feature", "est_status_asof_feb2025",
-        "lc_subtype", "hc_subtype", "n_missing",
+        "highest_clinical_trial_asof_feb2025",
+        "hierarchical_cluster_fold",
+        "random_fold",
+        "n_missing_CDR_feature",
+        "est_status_asof_feb2025",
+        "lc_subtype",
+        "hc_subtype",
+        "n_missing",
         # raw sequence / identifier columns — captured below before dropping
-        "vh_protein_sequence", "hc_protein_sequence", "hc_dna_sequence",
-        "vl_protein_sequence", "lc_protein_sequence", "lc_dna_sequence",
-        "heavy_aligned_aho", "light_aligned_aho",
+        "vh_protein_sequence",
+        "hc_protein_sequence",
+        "hc_dna_sequence",
+        "vl_protein_sequence",
+        "lc_protein_sequence",
+        "lc_dna_sequence",
+        "heavy_aligned_aho",
+        "light_aligned_aho",
     ]
 
     df = df.drop(columns=[c for c in drop_cols if c in df.columns]).copy()
@@ -53,29 +77,40 @@ def do_hugging_face(df, k, feature_set_description=None, models=None):
     df = df[df[fold_col].notna()].copy()
 
     # Capture antibody_name and fold BEFORE dropping — needed for error diagnostics
-    antibody_names = df["antibody_name"].values.copy() if "antibody_name" in df.columns else None
-    fold_labels    = df[fold_col].values.copy()
+    antibody_names = (
+        df["antibody_name"].values.copy() if "antibody_name" in df.columns else None
+    )
+    fold_labels = df[fold_col].values.copy()
 
     df = df.drop(columns=["antibody_name"], errors="ignore")
 
     feature_cols = [
-        c for c in df.select_dtypes(include=[np.number]).columns
+        c
+        for c in df.select_dtypes(include=[np.number]).columns
         if c not in [target, fold_col]
     ]
 
     print(f"[{k}] n_features: {len(feature_cols)}")
     print(f"[{k}] CDR features: {sum('_CDR_feature' in c for c in feature_cols)}")
-    print(f"[{k}] Embedding features: {sum('_CDR_feature' not in c for c in feature_cols)}")
+    print(
+        f"[{k}] Embedding features: {sum('_CDR_feature' not in c for c in feature_cols)}"
+    )
 
-    X           = df[feature_cols].to_numpy(dtype=float)
-    y           = df[target].to_numpy(dtype=float)
+    X = df[feature_cols].to_numpy(dtype=float)
+    y = df[target].to_numpy(dtype=float)
     fold_values = df[fold_col].to_numpy()
-    nan_mask    = np.isnan(X)
+    nan_mask = np.isnan(X)
 
-    print(f"[{k}] X shape: {X.shape} | NaNs: {nan_mask.sum()} "
-          f"| NaN rows: {nan_mask.any(axis=1).sum()}")
+    print(
+        f"[{k}] X shape: {X.shape} | NaNs: {nan_mask.sum()} "
+        f"| NaN rows: {nan_mask.any(axis=1).sum()}"
+    )
 
     assert len(X) == len(y), "X/y length mismatch after filtering"
+
+    # Identify CDR vs embedding column indices (computed once, used every fold)
+    cdr_idx = np.where(np.array(["_CDR_feature" in c for c in feature_cols]))[0]
+    emb_idx = np.where(np.array(["_CDR_feature" not in c for c in feature_cols]))[0]
 
     unique_folds = sorted(f for f in np.unique(fold_values) if f == f)  # exclude NaN
     results_rows = []
@@ -90,37 +125,52 @@ def do_hugging_face(df, k, feature_set_description=None, models=None):
         per_fold_stats = []
 
         for f in unique_folds:
-            test_idx  = np.where(fold_values == f)[0]
+            test_idx = np.where(fold_values == f)[0]
             train_idx = np.where(fold_values != f)[0]
 
             X_train, y_train = X[train_idx], y[train_idx]
-            X_test,  y_test  = X[test_idx],  y[test_idx]
+            X_test, y_test = X[test_idx], y[test_idx]
 
             # Fit preprocessing inside the fold — no leakage
             imputer = SimpleImputer(strategy="mean")
             X_train = imputer.fit_transform(X_train)
-            X_test  = imputer.transform(X_test)
+            X_test = imputer.transform(X_test)
 
-            scaler  = StandardScaler()
+            scaler = StandardScaler()
             X_train = scaler.fit_transform(X_train)
-            X_test  = scaler.transform(X_test)
+            X_test = scaler.transform(X_test)
+
+            # PCA on embedding dimensions only — reduces curse of dimensionality
+            # while preserving interpretable CDR features unchanged
+            if emb_idx.size > 1:
+                pca = PCA(n_components=0.95, random_state=42)
+                X_train_emb = pca.fit_transform(X_train[:, emb_idx])
+                X_test_emb = pca.transform(X_test[:, emb_idx])
+                X_train = np.hstack([X_train[:, cdr_idx], X_train_emb])
+                X_test = np.hstack([X_test[:, cdr_idx], X_test_emb])
 
             fitted_model = model.fit(X_train, y_train)
-            best_params  = fitted_model.best_params_ if hasattr(fitted_model, "best_params_") else {}
+            best_params = (
+                fitted_model.best_params_
+                if hasattr(fitted_model, "best_params_")
+                else {}
+            )
 
             y_pred = np.asarray(fitted_model.predict(X_test)).reshape(-1)
 
             y_pred_all[test_idx] = y_pred
             y_true_all[test_idx] = y_test
 
-            fold_rho  = spearmanr(y_test, y_pred).statistic
-            fold_r2   = r2_score(y_test, y_pred)
+            fold_rho = spearmanr(y_test, y_pred).statistic
+            fold_r2 = r2_score(y_test, y_pred)
             fold_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-            per_fold_stats.append((int(f), fold_r2, fold_rmse, fold_rho, len(y_test), best_params))
+            per_fold_stats.append(
+                (int(f), fold_r2, fold_rmse, fold_rho, len(y_test), best_params)
+            )
 
-        mask         = ~np.isnan(y_true_all)
-        overall_rho  = spearmanr(y_true_all[mask], y_pred_all[mask]).statistic
-        overall_r2   = r2_score(y_true_all[mask], y_pred_all[mask])
+        mask = ~np.isnan(y_true_all)
+        overall_rho = spearmanr(y_true_all[mask], y_pred_all[mask]).statistic
+        overall_r2 = r2_score(y_true_all[mask], y_pred_all[mask])
         overall_rmse = np.sqrt(mean_squared_error(y_true_all[mask], y_pred_all[mask]))
         all_best_params = [p for *_, p in per_fold_stats]
 
@@ -128,29 +178,33 @@ def do_hugging_face(df, k, feature_set_description=None, models=None):
         print("Fold\tN\tR2\tRMSE\tSpearman_rho")
         for f, r2, rmse, rho, n, bp in per_fold_stats:
             print(f"{f}\t{n}\t{r2:.4f}\t{rmse:.4f}\t{rho:.4f}")
-        print(f"Overall\t{mask.sum()}\t{overall_r2:.4f}\t{overall_rmse:.4f}\t{overall_rho:.4f}")
+        print(
+            f"Overall\t{mask.sum()}\t{overall_r2:.4f}\t{overall_rmse:.4f}\t{overall_rho:.4f}"
+        )
 
-        results_rows.append({
-            "feature_set_description": feature_set_description or k,
-            "model_type":              model_name,
-            "LLM_name":                k,
-            "r_Squared":               overall_r2,
-            "RMSE":                    overall_rmse,
-            "Spearman_rho":            overall_rho,
-            "best_params_per_fold":    str(all_best_params),
-        })
+        results_rows.append(
+            {
+                "feature_set_description": feature_set_description or k,
+                "model_type": model_name,
+                "LLM_name": k,
+                "r_Squared": overall_r2,
+                "RMSE": overall_rmse,
+                "Spearman_rho": overall_rho,
+                "best_params_per_fold": str(all_best_params),
+            }
+        )
 
         # ── Save OOF vector for ensemble + diagnostics ───────────────────────
         base_learner_key = f"{feature_set_description or k}__{model_name}"
-        abs_error = np.abs(y_true_all - y_pred_all)   # NaN where not predicted
+        abs_error = np.abs(y_true_all - y_pred_all)  # NaN where not predicted
 
         oof_predictions[base_learner_key] = {
-            "y_pred_oof":     y_pred_all.copy(),
-            "y_true_oof":     y_true_all.copy(),
-            "abs_error":      abs_error,
-            "antibody_names": antibody_names,           # maps row index -> name
-            "fold_labels":    fold_labels,
-            "spearman_rho":   overall_rho,
+            "y_pred_oof": y_pred_all.copy(),
+            "y_true_oof": y_true_all.copy(),
+            "abs_error": abs_error,
+            "antibody_names": antibody_names,  # maps row index -> name
+            "fold_labels": fold_labels,
+            "spearman_rho": overall_rho,
         }
 
     return pd.DataFrame(results_rows), oof_predictions
@@ -167,35 +221,44 @@ def do_modeling(v, k, feature_set_description=None, models=None):
         oof_predictions : dict
     """
     print("---------------------------------------------------------")
-    og_df = pd.read_csv("../../data/raw/GDPa1_246 IgGs_cleaned.csv")
+    og_df = pd.read_csv(ROOT / "data/raw/GDPa1_246 IgGs_cleaned.csv")
 
     # ── CDR features: safe merge on antibody_name ────────────────────────────
-    cdr_features     = pd.read_csv("../../data/modeling/cdr_features_titer.csv")
+    cdr_features = pd.read_csv(ROOT / "data/modeling/cdr_features_titer.csv")
     cdr_feature_cols = [c for c in cdr_features.columns if c != "antibody_name"]
-    cdr_features     = cdr_features.rename(
+    cdr_features = cdr_features.rename(
         columns={c: f"{c}_CDR_feature" for c in cdr_feature_cols}
     )
 
     before_n = len(og_df)
-    og_df    = og_df.merge(cdr_features, on="antibody_name", how="left", validate="one_to_one")
+    og_df = og_df.merge(
+        cdr_features, on="antibody_name", how="left", validate="one_to_one"
+    )
     if len(og_df) != before_n:
-        raise ValueError(f"Row count changed after CDR merge ({before_n} -> {len(og_df)})")
+        raise ValueError(
+            f"Row count changed after CDR merge ({before_n} -> {len(og_df)})"
+        )
 
-    added_cdr_cols   = [c for c in og_df.columns if c.endswith("_CDR_feature")]
+    added_cdr_cols = [c for c in og_df.columns if c.endswith("_CDR_feature")]
     missing_cdr_rows = og_df[added_cdr_cols].isna().all(axis=1).sum()
-    print(f"[{k}] CDR merge: {len(added_cdr_cols)} cols added | "
-          f"rows with all CDR missing = {missing_cdr_rows}")
+    print(
+        f"[{k}] CDR merge: {len(added_cdr_cols)} cols added | "
+        f"rows with all CDR missing = {missing_cdr_rows}"
+    )
 
     # ── LLM embeddings: drop columns already in og_df before merging ────────
-    join_key  = "antibody_name"
+    join_key = "antibody_name"
     cols_drop = [c for c in v.columns if c in og_df.columns and c != join_key]
-    v_clean   = v.drop(columns=cols_drop)
+    v_clean = v.drop(columns=cols_drop)
 
     merged = og_df.merge(v_clean, on=join_key, how="inner")
-    print(f"[{k}] og_df: {og_df.shape} | v_clean: {v_clean.shape} | merged: {merged.shape}")
+    print(
+        f"[{k}] og_df: {og_df.shape} | v_clean: {v_clean.shape} | merged: {merged.shape}"
+    )
 
     return do_hugging_face(
-        merged, k,
+        merged,
+        k,
         feature_set_description=feature_set_description,
         models=models,
     )
@@ -207,12 +270,12 @@ def load_pickles_to_df_dict(folder_path: str) -> dict:
     CDR features are NOT appended here — do_modeling handles the safe merge.
     """
     folder = Path(folder_path)
-    out    = {}
+    out = {}
     for p in folder.glob("*.pkl"):
         try:
             df = pd.read_pickle(p)
             if isinstance(df, pd.DataFrame):
-                key      = p.stem.replace("_df", "")
+                key = p.stem.replace("_df", "")
                 out[key] = df
                 print(f"Loaded {p.name} -> key='{key}' shape={df.shape}")
         except Exception as e:
@@ -236,7 +299,7 @@ def compute_weighted_ensemble(all_oof: dict) -> dict:
         dict with ensemble metrics, weight table, and prediction vector
     """
     # ── Verify fold alignment: all base learners must share the same y_true ─
-    first_key  = next(iter(all_oof))
+    first_key = next(iter(all_oof))
     y_true_ref = all_oof[first_key]["y_true_oof"]
 
     for key, val in all_oof.items():
@@ -248,7 +311,7 @@ def compute_weighted_ensemble(all_oof: dict) -> dict:
 
     # ── Weights: clip negatives, normalize to sum = 1 ───────────────────────
     raw_weights = {k: max(v["spearman_rho"], 0.0) for k, v in all_oof.items()}
-    total_w     = sum(raw_weights.values())
+    total_w = sum(raw_weights.values())
 
     if total_w == 0:
         raise ValueError(
@@ -263,33 +326,39 @@ def compute_weighted_ensemble(all_oof: dict) -> dict:
     for key, w in norm_weights.items():
         ensemble_pred += w * all_oof[key]["y_pred_oof"]
 
-    mask         = ~np.isnan(y_true_ref)
-    ens_rho      = spearmanr(y_true_ref[mask], ensemble_pred[mask]).statistic
-    ens_r2       = r2_score(y_true_ref[mask], ensemble_pred[mask])
-    ens_rmse     = np.sqrt(mean_squared_error(y_true_ref[mask], ensemble_pred[mask]))
+    mask = ~np.isnan(y_true_ref)
+    ens_rho = spearmanr(y_true_ref[mask], ensemble_pred[mask]).statistic
+    ens_r2 = r2_score(y_true_ref[mask], ensemble_pred[mask])
+    ens_rmse = np.sqrt(mean_squared_error(y_true_ref[mask], ensemble_pred[mask]))
 
-    weight_table = pd.DataFrame([
-        {
-            "base_learner":  k,
-            "spearman_rho":  all_oof[k]["spearman_rho"],
-            "weight":        norm_weights[k],
-        }
-        for k in all_oof
-    ]).sort_values("weight", ascending=False).reset_index(drop=True)
+    weight_table = (
+        pd.DataFrame(
+            [
+                {
+                    "base_learner": k,
+                    "spearman_rho": all_oof[k]["spearman_rho"],
+                    "weight": norm_weights[k],
+                }
+                for k in all_oof
+            ]
+        )
+        .sort_values("weight", ascending=False)
+        .reset_index(drop=True)
+    )
 
     return {
         "ensemble_spearman_rho": ens_rho,
-        "ensemble_r2":           ens_r2,
-        "ensemble_rmse":         ens_rmse,
-        "weight_table":          weight_table,
-        "y_pred_ensemble":       ensemble_pred,
-        "y_true":                y_true_ref,
+        "ensemble_r2": ens_r2,
+        "ensemble_rmse": ens_rmse,
+        "weight_table": weight_table,
+        "y_pred_ensemble": ensemble_pred,
+        "y_true": y_true_ref,
     }
 
 
-
-
-def compute_failure_overlap_diagnostics(all_oof: dict, high_error_pct: float = 0.25) -> dict:
+def compute_failure_overlap_diagnostics(
+    all_oof: dict, high_error_pct: float = 0.25
+) -> dict:
     """
     Examine whether base learners fail on the same antibodies.
 
@@ -313,83 +382,146 @@ def compute_failure_overlap_diagnostics(all_oof: dict, high_error_pct: float = 0
           consistently_wrong : antibodies flagged high-error by ALL base learners
           consistently_right : antibodies flagged high-error by NO base learner
     """
-    first_key      = next(iter(all_oof))
+    first_key = next(iter(all_oof))
     antibody_names = all_oof[first_key]["antibody_names"]
-    fold_labels    = all_oof[first_key]["fold_labels"]
-    y_true         = all_oof[first_key]["y_true_oof"]
+    fold_labels = all_oof[first_key]["fold_labels"]
+    y_true = all_oof[first_key]["y_true_oof"]
 
-    records = pd.DataFrame({
-        "antibody_name": antibody_names,
-        "y_true":        y_true,
-        "fold":          fold_labels,
-    })
+    records = pd.DataFrame(
+        {
+            "antibody_name": antibody_names,
+            "y_true": y_true,
+            "fold": fold_labels,
+        }
+    )
 
-    error_vectors  = {}
+    error_vectors = {}
     high_err_flags = {}
 
     def short_label(k):
         return k.replace("CDR_and_", "").replace("__Lasso", "")
 
     for key, val in all_oof.items():
-        lbl       = short_label(key)
-        abs_err   = val["abs_error"]
+        lbl = short_label(key)
+        abs_err = val["abs_error"]
         threshold = np.nanquantile(abs_err, 1 - high_error_pct)
 
-        records[f"{lbl}_abserr"]   = abs_err
-        records[f"{lbl}_pred"]     = val["y_pred_oof"]
-        error_vectors[lbl]         = abs_err
-        high_err_flags[lbl]        = (abs_err >= threshold).astype(float)
+        records[f"{lbl}_abserr"] = abs_err
+        records[f"{lbl}_pred"] = val["y_pred_oof"]
+        error_vectors[lbl] = abs_err
+        high_err_flags[lbl] = (abs_err >= threshold).astype(float)
         records[f"{lbl}_high_err"] = high_err_flags[lbl]
 
     flag_cols = [c for c in records.columns if c.endswith("_high_err")]
     records["n_models_high_err"] = records[flag_cols].sum(axis=1)
-    records = records.sort_values("n_models_high_err", ascending=False).reset_index(drop=True)
+    records = records.sort_values("n_models_high_err", ascending=False).reset_index(
+        drop=True
+    )
 
     # Pairwise Spearman correlation of absolute error vectors
     learner_labels = list(error_vectors.keys())
-    n_learners     = len(learner_labels)
-    corr_matrix    = np.full((n_learners, n_learners), np.nan)
+    n_learners = len(learner_labels)
+    corr_matrix = np.full((n_learners, n_learners), np.nan)
 
     for i, l1 in enumerate(learner_labels):
         for j, l2 in enumerate(learner_labels):
             e1, e2 = error_vectors[l1], error_vectors[l2]
-            mask   = ~(np.isnan(e1) | np.isnan(e2))
+            mask = ~(np.isnan(e1) | np.isnan(e2))
             if mask.sum() > 5:
                 corr_matrix[i, j] = spearmanr(e1[mask], e2[mask]).statistic
 
-    error_corr_df = pd.DataFrame(corr_matrix, index=learner_labels, columns=learner_labels)
+    error_corr_df = pd.DataFrame(
+        corr_matrix, index=learner_labels, columns=learner_labels
+    )
 
-    n_learners_total   = len(flag_cols)
-    consistently_wrong = records[records["n_models_high_err"] == n_learners_total]["antibody_name"].tolist()
-    consistently_right = records[records["n_models_high_err"] == 0]["antibody_name"].tolist()
+    n_learners_total = len(flag_cols)
+    consistently_wrong = records[records["n_models_high_err"] == n_learners_total][
+        "antibody_name"
+    ].tolist()
+    consistently_right = records[records["n_models_high_err"] == 0][
+        "antibody_name"
+    ].tolist()
 
     print("\n" + "=" * 55)
     print("FAILURE OVERLAP DIAGNOSTICS")
     print("=" * 55)
-    print(f"\nHigh-error threshold: top {int(high_error_pct*100)}% abs error per learner")
-    print(f"Antibodies flagged high-error by ALL {n_learners_total} learners : {len(consistently_wrong)}")
-    print(f"Antibodies flagged high-error by NO learner              : {len(consistently_right)}")
+    print(
+        f"\nHigh-error threshold: top {int(high_error_pct * 100)}% abs error per learner"
+    )
+    print(
+        f"Antibodies flagged high-error by ALL {n_learners_total} learners : {len(consistently_wrong)}"
+    )
+    print(
+        f"Antibodies flagged high-error by NO learner              : {len(consistently_right)}"
+    )
 
     print("\nPairwise Spearman rho of absolute error vectors:")
     print(error_corr_df.round(3).to_string())
 
-    display_cols = (
-        ["antibody_name", "y_true", "fold", "n_models_high_err"]
-        + [c for c in records.columns if c.endswith("_abserr")]
-    )
+    display_cols = ["antibody_name", "y_true", "fold", "n_models_high_err"] + [
+        c for c in records.columns if c.endswith("_abserr")
+    ]
     print("\nTop 20 most-failed antibodies:")
     print(records[display_cols].head(20).to_string(index=False))
 
     if consistently_wrong:
         print(f"\nConsistently wrong ({len(consistently_wrong)} antibodies):")
-        print(records[records["antibody_name"].isin(consistently_wrong)][display_cols].to_string(index=False))
+        print(
+            records[records["antibody_name"].isin(consistently_wrong)][
+                display_cols
+            ].to_string(index=False)
+        )
 
     return {
-        "per_antibody_df":    records,
-        "error_corr_matrix":  error_corr_df,
+        "per_antibody_df": records,
+        "error_corr_matrix": error_corr_df,
         "consistently_wrong": consistently_wrong,
         "consistently_right": consistently_right,
     }
+
+
+def compute_stacked_ensemble(all_oof: dict) -> dict:
+    """
+    Ridge meta-learner trained on OOF predictions from all base learners.
+    Uses the same fold structure for meta-CV so no antibody leaks into its
+    own meta-training set.
+
+    Args:
+        all_oof : dict from do_hugging_face — {base_learner_key -> {y_pred_oof, ...}}
+
+    Returns:
+        dict with stacked ensemble metrics and prediction vector
+    """
+    keys = list(all_oof.keys())
+    first = all_oof[keys[0]]
+    fold_labels = first["fold_labels"]
+    y_true = first["y_true_oof"]
+
+    # Meta-feature matrix: each column is one base learner's OOF predictions
+    meta_X = np.column_stack([all_oof[k]["y_pred_oof"] for k in keys])
+
+    unique_folds = sorted(f for f in np.unique(fold_labels) if f == f)
+    meta_pred = np.full(len(y_true), np.nan)
+
+    for f in unique_folds:
+        test_idx = np.where(fold_labels == f)[0]
+        train_idx = np.where(fold_labels != f)[0]
+        meta_model = Ridge(alpha=1.0)
+        meta_model.fit(meta_X[train_idx], y_true[train_idx])
+        meta_pred[test_idx] = meta_model.predict(meta_X[test_idx])
+
+    mask = ~np.isnan(y_true)
+    rho = spearmanr(y_true[mask], meta_pred[mask]).statistic
+    r2 = r2_score(y_true[mask], meta_pred[mask])
+    rmse = np.sqrt(mean_squared_error(y_true[mask], meta_pred[mask]))
+
+    return {
+        "stack_spearman_rho": rho,
+        "stack_r2": r2,
+        "stack_rmse": rmse,
+        "y_pred_stacked": meta_pred,
+    }
+
 
 def driver():
     """
@@ -399,17 +531,42 @@ def driver():
       3. Compute Spearman-weighted ensemble over all base learners
       4. Print and save results
     """
-    df_dict = load_pickles_to_df_dict("../../data/modeling")
+    df_dict = load_pickles_to_df_dict(str(ROOT / "data/modeling"))
 
-    final_results = pd.DataFrame(columns=[
-        "feature_set_description", "model_type", "LLM_name",
-        "r_Squared", "RMSE", "Spearman_rho", "best_params_per_fold",
-    ])
+    final_results = pd.DataFrame(
+        columns=[
+            "feature_set_description",
+            "model_type",
+            "LLM_name",
+            "r_Squared",
+            "RMSE",
+            "Spearman_rho",
+            "best_params_per_fold",
+        ]
+    )
 
     models = {
+        "Ridge": GridSearchCV(
+            Ridge(),
+            {"alpha": [0.01, 0.1, 1, 5, 10, 50, 100]},
+            cv=inner_cv,
+            scoring="r2",
+        ),
         "Lasso": GridSearchCV(
-            Lasso(random_state=42),
-            {"alpha": [10, 12, 15]},
+            Lasso(random_state=42, max_iter=100000),
+            {"alpha": [0.01, 0.1, 1, 5, 10, 50, 100]},
+            cv=inner_cv,
+            scoring="r2",
+        ),
+        "ElasticNet": GridSearchCV(
+            ElasticNet(random_state=42, max_iter=100000),
+            {"alpha": [0.01, 0.1, 1, 5], "l1_ratio": [0.1, 0.5, 0.9]},
+            cv=inner_cv,
+            scoring="r2",
+        ),
+        "SVR_rbf": GridSearchCV(
+            SVR(kernel="rbf"),
+            {"C": [0.1, 1, 10], "epsilon": [0.01, 0.1], "gamma": ["scale", "auto"]},
             cv=inner_cv,
             scoring="r2",
         ),
@@ -419,7 +576,8 @@ def driver():
 
     for k, v in df_dict.items():
         run_results, oof_preds = do_modeling(
-            v, k,
+            v,
+            k,
             feature_set_description=f"CDR_and_{k}",
             models=models,
         )
@@ -442,6 +600,16 @@ def driver():
     print(f"Ensemble R2           : {ensemble_result['ensemble_r2']:.4f}")
     print(f"Ensemble RMSE         : {ensemble_result['ensemble_rmse']:.4f}")
 
+    # ── Stacked ensemble (Ridge meta-learner on OOF predictions) ─────────────
+    print("\n" + "=" * 55)
+    print("STACKED ENSEMBLE (Ridge meta-learner on OOF predictions)")
+    print("=" * 55)
+
+    stack_result = compute_stacked_ensemble(all_oof)
+    print(f"\nStacked Spearman rho : {stack_result['stack_spearman_rho']:.4f}")
+    print(f"Stacked R2           : {stack_result['stack_r2']:.4f}")
+    print(f"Stacked RMSE         : {stack_result['stack_rmse']:.4f}")
+
     # ── Save ─────────────────────────────────────────────────────────────────
     final_results = final_results.sort_values(
         by=["feature_set_description", "RMSE", "Spearman_rho"],
@@ -450,18 +618,15 @@ def driver():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 
-    final_results.to_csv(
-        f"../../data/modeling/final_results_{timestamp}.csv", index=False
-    )
+    out = ROOT / "data/modeling"
+    final_results.to_csv(out / f"final_results_{timestamp}.csv", index=False)
     ensemble_result["weight_table"].to_csv(
-        f"../../data/modeling/ensemble_weights_{timestamp}.csv", index=False
+        out / f"ensemble_weights_{timestamp}.csv", index=False
     )
     diag_result["per_antibody_df"].to_csv(
-        f"../../data/modeling/failure_overlap_{timestamp}.csv", index=False
+        out / f"failure_overlap_{timestamp}.csv", index=False
     )
-    diag_result["error_corr_matrix"].to_csv(
-        f"../../data/modeling/error_correlation_{timestamp}.csv"
-    )
+    diag_result["error_corr_matrix"].to_csv(out / f"error_correlation_{timestamp}.csv")
 
     print(f"\nSaved: final_results_{timestamp}.csv")
     print(f"Saved: ensemble_weights_{timestamp}.csv")

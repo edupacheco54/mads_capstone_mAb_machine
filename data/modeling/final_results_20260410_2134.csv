@@ -1,6 +1,0 @@
-feature_set_description,model_type,LLM_name,r_Squared,RMSE,Spearman_rho,best_params_per_fold
-CDR_and_ankh_model,Lasso,ankh_model,0.11918053842188492,114.98701481818335,0.30528396414047076,"[{'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}]"
-CDR_and_esmc_model,Lasso,esmc_model,0.06536973698396031,118.44732800345618,0.2896367610810317,"[{'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}]"
-CDR_and_prost_t5_model,Lasso,prost_t5_model,0.11552353222942924,115.22547041459023,0.28610647077278967,"[{'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}]"
-CDR_and_prot_t5_model,Lasso,prot_t5_model,0.14017680260457255,113.60826500359683,0.3534026297736528,"[{'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}]"
-CDR_and_protbert_model,Lasso,protbert_model,0.11721227946492585,115.11541679955165,0.34695694907515073,"[{'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}, {'alpha': 15}]"

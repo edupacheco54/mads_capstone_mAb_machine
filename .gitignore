@@ -14,6 +14,9 @@ __pycache__/
 # *.csv
 # *.zip
 
+# generated figures — large PNGs don't belong in git
+data/figures/
+
 # outputs
 # models/
 # outputs/

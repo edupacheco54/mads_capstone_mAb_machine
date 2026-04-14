@@ -1,10 +1,10 @@
 README.md
 pyproject.toml
+src/CDR_work/__init__.py
 src/CDR_work/cdr_feature_utils.py
 src/CDR_work/cdr_features_titer.py
 src/CDR_work/cdr_features_titer_unzip.py
 src/CDR_work/cdr_multiassay_spearman.py
-src/CDR_work/hydrophobic_cooperativity.py
 src/models/__init__.py
 src/models/ankh.py
 src/models/esmc.py
@@ -13,7 +13,13 @@ src/models/prot_t5.py
 src/models/protbert.py
 src/pipelines/build_model_datasets.py
 src/pipelines/generate_embeddings.py
-src/prediction_modeling/pycaret_titer_experiment.py
+src/prediction_modeling/__init__.py
+src/prediction_modeling/ensemble_beta.py
+src/prediction_modeling/ensemble_sandbox.py
+src/prediction_modeling/failure_eda.py
+src/prediction_modeling/final_holdout_eval.py
+src/prediction_modeling/final_holdout_eval_pycaret_model.py
+src/prediction_modeling/hugging_face.py
 src/siads699_capstone.egg-info/PKG-INFO
 src/siads699_capstone.egg-info/SOURCES.txt
 src/siads699_capstone.egg-info/dependency_links.txt
