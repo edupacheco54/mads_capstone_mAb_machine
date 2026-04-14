@@ -1,0 +1,25 @@
+{
+  "repo_root": "/home/allen/mads_UMICH/capstone699_repo",
+  "data_path": "/home/allen/mads_UMICH/capstone699_repo/data/raw/GDPa1_246 IgGs_cleaned.csv",
+  "holdout_path": "/home/allen/mads_UMICH/capstone699_repo/data/test_data/cleaned_holdout_data_with_aho.csv",
+  "target": "Titer",
+  "fold_column": "hierarchical_cluster_IgG_isotype_stratified_fold",
+  "n_folds": 5,
+  "n_rows_training": 239,
+  "n_rows_holdout": 80,
+  "n_features": 62,
+  "seed": 42,
+  "metric": "RMSE",
+  "candidate_models": [
+    "ridge",
+    "lasso",
+    "en",
+    "rf",
+    "et",
+    "gbr",
+    "xgboost",
+    "lightgbm",
+    "svm"
+  ],
+  "outdir": "/home/allen/mads_UMICH/capstone699_repo/data/modeling/prediction_modeling_results/pycaret_results"
+}

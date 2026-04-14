@@ -1,3 +1,12 @@
+"""
+ensemble_beta.py
+
+Runs cluster-aware cross-validated Titer modeling on GDPa1 by combining
+engineered CDR features with protein language model embedding features,
+then computes out-of-fold diagnostics, failure-overlap analysis, and a
+Spearman-weighted ensemble across base learners.
+"""
+
 import numpy as np
 import pandas as pd
 pd.set_option('display.max_rows', 500)
