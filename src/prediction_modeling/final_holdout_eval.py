@@ -1,3 +1,11 @@
+"""
+final_holdout_eval.py
+
+Trains a selected sklearn regression model on the full GDPa1 training set
+using engineered CDR feature matrices, then evaluates that fitted model on
+an external holdout dataset and reports RMSE, MAE, R2, and Spearman correlation.
+"""
+
 import argparse
 from pathlib import Path
 import sys
@@ -11,6 +19,8 @@ from sklearn.linear_model import Ridge, Lasso, ElasticNet
 from sklearn.svm import SVR
 
 # repo-aware import
+# search upward for the repo root containing /src so this script can be run
+# from different working directories without breaking imports.
 current = Path(__file__).resolve()
 for parent in [current] + list(current.parents):
     if (parent / "src").exists():
@@ -19,6 +29,8 @@ for parent in [current] + list(current.parents):
 
 from CDR_work.cdr_feature_utils import build_feature_matrix
 
+# Simple registry that maps model names from the CLI to constructors.
+# Lambdas let us inject fixed defaults like random_state where supported.
 MODEL_REGISTRY = {
     "Ridge":      Ridge,
     "Lasso":      lambda **kw: Lasso(random_state=42, **kw),
@@ -37,6 +49,8 @@ def parse_args():
     return parser.parse_args()
 
 def compute_metrics(y_true, y_pred):
+    # Centralized metric function keeps evaluation reporting consistent
+    # across train/holdout scripts.
     return {
         "RMSE": float(np.sqrt(mean_squared_error(y_true, y_pred))),
         "MAE": float(mean_absolute_error(y_true, y_pred)),
@@ -51,11 +65,14 @@ def main(train_path, holdout_path, model_name="Ridge", model_params="{}"):
     train_df = pd.read_csv(train_path)
     holdout_df = pd.read_csv(holdout_path)
 
-    # Build feature matrices explicitly
+    # Build feature matrices explicitly using the same feature engineering logic
+    # for both train and holdout. This is crucial so the holdout sees the same
+    # feature definition as the training dataset.
     train_feat = build_feature_matrix(train_df)
     holdout_feat = build_feature_matrix(holdout_df)
 
-    # Force holdout to have the exact same feature columns/order as train
+    # Force holdout to have the exact same feature columns and same column order
+    # as the training matrix. reindex() also creates any missing columns if needed.
     feature_cols = train_feat.columns.tolist()
     holdout_feat = holdout_feat.reindex(columns=feature_cols)
 
@@ -76,7 +93,11 @@ def main(train_path, holdout_path, model_name="Ridge", model_params="{}"):
     y_holdout = holdout_model_df["Titer"]
 
     print("[INFO] Training model on full dataset...")
+    
+    # model_params comes in as a JSON string from the CLI, e.g. '{"alpha": 10}'    
     params = json.loads(model_params)
+    
+    # Instantiate chosen model from registry.    
     model = MODEL_REGISTRY[model_name](**params)
     model.fit(X_train, y_train)
      
