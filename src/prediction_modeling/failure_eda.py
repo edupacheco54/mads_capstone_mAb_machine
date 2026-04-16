@@ -1,4 +1,3 @@
- 
 """
 failure_eda.py By Alaude Sonnet 4.6 Extended | Prompts by Allen Chezick
 
@@ -137,23 +136,6 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
     print(f"  failure_overlap rows : {len(failure_df)}")
     print(f"  GDPa1 rows          : {len(gdpa1_df)}")
 
-    # Infer number of learners from flag columns
-    # flag_cols     = [c for c in failure_df.columns if c.endswith("_high_err")]
-    # n_learners    = len(flag_cols)
-    # abserr_cols   = [c for c in failure_df.columns if c.endswith("_abserr")]
-    # pred_cols     = [c for c in failure_df.columns if c.endswith("_pred")]
-
-    # print(f"  Base learners detected: {n_learners}")
-
-    # # Compute mean abs error across learners per antibody
-    # failure_df["mean_abserr"] = failure_df[abserr_cols].mean(axis=1)
-    # failure_df["std_abserr"]  = failure_df[abserr_cols].std(axis=1)
-
-    # # Assign failure group
-    # failure_df["failure_group"] = failure_df["n_models_high_err"].apply(
-    #     lambda n: assign_group(n, n_learners)
-    # )
-
     # Infer error/pred columns for summaries only
     flag_cols   = [c for c in failure_df.columns if c.endswith("_high_err")]
     abserr_cols = [c for c in failure_df.columns if c.endswith("_abserr")]
@@ -181,10 +163,6 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
         ],
         default="sometimes_wrong",
     )
-
-
-
-
 
     # ── Merge onto GDPa1 ─────────────────────────────────────────────────────
     # Drop y_true from failure_df (already in gdpa1_df as Titer) to avoid collision
