@@ -1,4 +1,3 @@
- 
 """
 failure_eda.py By Alaude Sonnet 4.6 Extended | Prompts by Allen Chezick
 
@@ -137,21 +136,32 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
     print(f"  failure_overlap rows : {len(failure_df)}")
     print(f"  GDPa1 rows          : {len(gdpa1_df)}")
 
-    # Infer number of learners from flag columns
-    flag_cols     = [c for c in failure_df.columns if c.endswith("_high_err")]
-    n_learners    = len(flag_cols)
-    abserr_cols   = [c for c in failure_df.columns if c.endswith("_abserr")]
-    pred_cols     = [c for c in failure_df.columns if c.endswith("_pred")]
+    # Infer error/pred columns for summaries only
+    flag_cols   = [c for c in failure_df.columns if c.endswith("_high_err")]
+    abserr_cols = [c for c in failure_df.columns if c.endswith("_abserr")]
+    pred_cols   = [c for c in failure_df.columns if c.endswith("_pred")]
 
-    print(f"  Base learners detected: {n_learners}")
+    print(f"  Flag columns detected: {len(flag_cols)}")
+    print("  Unique n_models_high_err values:", sorted(failure_df["n_models_high_err"].dropna().unique()))
 
     # Compute mean abs error across learners per antibody
     failure_df["mean_abserr"] = failure_df[abserr_cols].mean(axis=1)
     failure_df["std_abserr"]  = failure_df[abserr_cols].std(axis=1)
 
-    # Assign failure group
-    failure_df["failure_group"] = failure_df["n_models_high_err"].apply(
-        lambda n: assign_group(n, n_learners)
+    # Use the actual max count present in the file as the all-models-failed threshold
+    max_failures = int(failure_df["n_models_high_err"].max())
+    print(f"  Max failures observed in file: {max_failures}")
+
+    failure_df["failure_group"] = np.select(
+        [
+            failure_df["n_models_high_err"] == max_failures,
+            failure_df["n_models_high_err"] == 0,
+        ],
+        [
+            "consistently_wrong",
+            "consistently_right",
+        ],
+        default="sometimes_wrong",
     )
 
     # ── Merge onto GDPa1 ─────────────────────────────────────────────────────
@@ -412,6 +422,8 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
     # ── Plot 10: CDR feature distributions by failure group ──────────────────
     # Only runs if --cdr-csv was provided and CDR columns are present in plot_df
     cdr_cols_in_plot = [c for c in plot_df.columns if c.endswith("_CDR_feature")]
+    print(f"Total CDR feature columns detected: {len(cdr_cols_in_plot)}")
+    print("Sample CDR columns:", cdr_cols_in_plot[:5])
     if cdr_cols_in_plot:
         print("[PLOT 10] CDR features by failure group...")
 
@@ -421,10 +433,30 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
         grp_wrong = plot_df[plot_df["failure_group"] == "consistently_wrong"]
         grp_right = plot_df[plot_df["failure_group"] == "consistently_right"]
 
+        print("grp_wrong rows:", len(grp_wrong))
+        print("grp_right rows:", len(grp_right))
+        print(plot_df["failure_group"].value_counts(dropna=False))
+
+        for col in cdr_cols_in_plot[:10]:
+            print(f"\nColumn: {col}")
+            print("  wrong non-null:", grp_wrong[col].notna().sum())
+            print("  right non-null:", grp_right[col].notna().sum())
+
+        print("grp_wrong rows:", len(grp_wrong))
+        print("grp_right rows:", len(grp_right))
+        print("failure_group value counts:")
+        print(plot_df["failure_group"].value_counts(dropna=False))
+        for col in cdr_cols_in_plot[:5]:
+            print(f"\nColumn: {col}")
+            print("  wrong non-null:", grp_wrong[col].notna().sum())
+            print("  right non-null:", grp_right[col].notna().sum())
+            print("  wrong sample:", grp_wrong[col].dropna().head().tolist())
+            print("  right sample:", grp_right[col].dropna().head().tolist())
+            
         feature_stats = []
         for col in cdr_cols_in_plot:
-            w = grp_wrong[col].dropna()
-            r = grp_right[col].dropna()
+            w = grp_wrong[col] #.dropna()
+            r = grp_right[col] #.dropna()
             if len(w) < 2 or len(r) < 2:
                 continue
             _, p = _mwu(w, r, alternative="two-sided")
@@ -437,11 +469,24 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
                 "median_wrong": w.median(),
                 "median_right": r.median(),
             })
+        print("Feature stats length:", len(feature_stats))
 
-        feat_df = (pd.DataFrame(feature_stats)
-                     .sort_values("p_value")
-                     .reset_index(drop=True))
 
+        feat_df = pd.DataFrame(feature_stats)
+        if feat_df.empty:
+            print("[ERROR] No valid CDR features found for MWU comparison.")
+            print("Check grouped row counts and CDR non-null counts.")
+            return
+
+        feat_df = feat_df.sort_values("p_value").reset_index(drop=True)
+
+        if feat_df.empty:
+            print("[ERROR] No valid CDR features found for MWU comparison.")
+            print("Check CDR merge, column names, and missing values.")
+            return
+
+        feat_df = feat_df.sort_values("p_value").reset_index(drop=True)
+ 
         # Print top findings
         print("\n  Top CDR features differentiating consistently-wrong vs right (MWU):")
         print(feat_df.head(15)[["feature", "p_value", "median_diff_wrong_minus_right",
