@@ -1,25 +1,17 @@
-#git ignore
-.gitignore
-
-#virtual environments
-.venv
-
-# environments
+# Virtual environments
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 
-# data
-# data/
-# *.csv
-# *.zip
+# Embeddings and model datasets (large binary files — regenerate via pipeline)
+data/embeddings/
+data/modeling/*.pkl
+data/modeling/holdout/
 
-# outputs
-# models/
-# outputs/
-# *.png
-# *.pkl
-# *.pt
+# Logs
+logs.log
+*.log
 
 # OS junk
 .DS_Store

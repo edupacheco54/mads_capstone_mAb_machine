@@ -18,10 +18,16 @@ Changes from ensemble_beta_2.py (original):
     the per-embedding-family embedding rows.
   - driver() gains HOLDOUT_CSV_PATH variable; collects and prints holdout summary.
   - pd.concat FutureWarning suppressed by accumulating result dfs in a list.
+
+Pipeline cleanup and code review assisted by Claude Code (Sonnet 4.6).
+Core modeling logic, leakage analysis, and research design by Allen Chezick.
 """
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 50)
@@ -355,10 +361,10 @@ def do_modeling(v, k, feature_set_description=None, models=None,
         holdout_results_df: pd.DataFrame (empty if no holdout)
     """
     print("---------------------------------------------------------")
-    og_df = pd.read_csv("../../data/raw/GDPa1_246 IgGs_cleaned.csv")
+    og_df = pd.read_csv(PROJECT_ROOT / "data/raw/GDPa1_246 IgGs_cleaned.csv")
 
     # Load precomputed CDR features.
-    cdr_features = pd.read_csv("../../data/modeling/cdr_features_titer.csv")
+    cdr_features = pd.read_csv(PROJECT_ROOT / "data/modeling/cdr_features_titer.csv")
 
     # Rename so CDR columns are distinguishable from embedding columns and
     # can be reliably identified / dropped by suffix.
@@ -712,15 +718,15 @@ def driver():
       5. Print and save results
     """
     # ── Data paths ─────────────────────────────────────────────────────────────
-    PICKLE_DIR = "../../data/modeling"
-    CDR_CSV_PATH = "../../data/modeling/cdr_features_titer.csv"
+    PICKLE_DIR = PROJECT_ROOT / "data/modeling"
+    CDR_CSV_PATH = PROJECT_ROOT / "data/modeling/cdr_features_titer.csv"
 
     # Set HOLDOUT_CSV_PATH to the path of your holdout CSV to enable holdout
     # evaluation.  The CSV must contain at minimum:
     #   antibody_name (str) — must match antibody_name values in the embedding pickles
     #   Titer (float)       — held-out evaluation target
     # Set to None to skip holdout evaluation entirely.
-    HOLDOUT_CSV_PATH = None  # e.g. "../../data/raw/holdout_set.csv"
+    HOLDOUT_CSV_PATH = None  # e.g. PROJECT_ROOT / "data/raw/holdout_set.csv"
 
     df_dict = load_pickles_to_df_dict(PICKLE_DIR)
 
@@ -802,14 +808,16 @@ def driver():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 
+    modeling_dir = PROJECT_ROOT / "data/modeling"
+
     # Save result artifacts — timestamps prevent runs from overwriting each other.
-    final_results.to_csv(f"../../data/modeling/final_results_{timestamp}.csv", index=False)
-    ensemble_result["weight_table"].to_csv(f"../../data/modeling/ensemble_weights_{timestamp}.csv", index=False)
-    diag_result["per_antibody_df"].to_csv(f"../../data/modeling/failure_overlap_{timestamp}.csv", index=False)
-    diag_result["error_corr_matrix"].to_csv(f"../../data/modeling/error_correlation_{timestamp}.csv")
+    final_results.to_csv(modeling_dir / f"final_results_{timestamp}.csv", index=False)
+    ensemble_result["weight_table"].to_csv(modeling_dir / f"ensemble_weights_{timestamp}.csv", index=False)
+    diag_result["per_antibody_df"].to_csv(modeling_dir / f"failure_overlap_{timestamp}.csv", index=False)
+    diag_result["error_corr_matrix"].to_csv(modeling_dir / f"error_correlation_{timestamp}.csv")
 
     if not holdout_summary.empty:
-        holdout_summary.to_csv(f"../../data/modeling/holdout_results_{timestamp}.csv", index=False)
+        holdout_summary.to_csv(modeling_dir / f"holdout_results_{timestamp}.csv", index=False)
         print(f"Saved: holdout_results_{timestamp}.csv  (aggregate metrics per model)")
 
     if holdout_preds_list:
@@ -817,7 +825,7 @@ def driver():
             ["feature_set_description", "antibody_name"]
         ).reset_index(drop=True)
         holdout_preds_all.to_csv(
-            f"../../data/modeling/holdout_predictions_{timestamp}.csv", index=False
+            modeling_dir / f"holdout_predictions_{timestamp}.csv", index=False
         )
         print(f"Saved: holdout_predictions_{timestamp}.csv  (one row per antibody per model)")
 

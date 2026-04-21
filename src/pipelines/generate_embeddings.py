@@ -1,3 +1,13 @@
+"""
+generate_embeddings.py
+
+Generates and caches VH/VL protein language model embeddings for all
+antibodies in both the training and holdout datasets.
+
+Pipeline architecture and code cleanup assisted by Claude Code (Sonnet 4.6).
+Core research design and modeling decisions by Eduardo Pacheco.
+"""
+
 from pathlib import Path
 
 import pandas as pd

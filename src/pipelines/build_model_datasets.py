@@ -1,3 +1,13 @@
+"""
+build_model_datasets.py
+
+Merges PLM embeddings with cleaned antibody data to produce model-ready
+datasets for both the training and holdout sets.
+
+Pipeline architecture and code cleanup assisted by Claude Code (Sonnet 4.6).
+Core research design and modeling decisions by Eduardo Pacheco.
+"""
+
 from pathlib import Path
 import pandas as pd
 from src.models import MODEL_REGISTRY
