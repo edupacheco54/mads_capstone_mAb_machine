@@ -420,7 +420,6 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
             problem_df.nlargest(top_n, "mean_abserr")
             .sort_values("mean_abserr", ascending=True)
         )
-        # Drop trailing "mab" from INN-style names for shorter y-axis labels (-mab, -zumab, etc.).
         _names = top["antibody_name"].astype(str)
         y_labels = _names.apply(
             lambda s: s[:-3] if len(s) >= 3 and s.lower().endswith("mab") else s
