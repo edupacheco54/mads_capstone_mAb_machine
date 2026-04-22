@@ -28,7 +28,7 @@ Outputs (in --out-dir):
     06_subtype_breakdown.png        hc_subtype / lc_subtype composition by group
     07_clinical_phase_breakdown.png Clinical trial phase composition by group
     08_fold_composition.png         Which folds contain the hard antibodies
-    09_error_heatmap.png            Per-antibody abs error heatmap (hard antibodies)
+    09_error_top_distribution.png   Mean abs error distribution + top antibodies (hard + borderline)
     10_cdr_features_by_group.png    CDR biophysical features: wrong vs right (requires --cdr-csv)
 """
 
@@ -383,40 +383,62 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
         fig.tight_layout()
         save(fig, out_dir, "08_fold_composition.png")
 
-    # ── Plot 09: Per-antibody abs error heatmap (hard + borderline) ───────────
-    print("[PLOT 09] Error heatmap...")
-    heatmap_df = (plot_df[plot_df["failure_group"].isin(["consistently_wrong", "sometimes_wrong"])]
+    # ── Plot 09: Mean abs error distribution + top antibodies (hard + borderline) ─
+    print("[PLOT 09] Error distribution + top antibodies...")
+    problem_df = (plot_df[plot_df["failure_group"].isin(["consistently_wrong", "sometimes_wrong"])]
                   .sort_values("n_models_high_err", ascending=False))
 
-    if len(heatmap_df) > 0 and len(abserr_cols) > 0:
-        heat_data = heatmap_df.set_index("antibody_name")[abserr_cols].copy()
-        # Shorten column labels
-        heat_data.columns = [c.replace("_abserr", "") for c in heat_data.columns]
-
-        fig_h = max(5, len(heat_data) * 0.28)
-        fig, ax = plt.subplots(figsize=(max(8, len(abserr_cols) * 1.5), fig_h))
-
-        sns.heatmap(
-            heat_data,
-            ax=ax,
-            cmap="YlOrRd",
-            linewidths=0.4,
-            linecolor="white",
-            annot=(len(heat_data) <= 40),   # only annotate if not too crowded
-            fmt=".0f",
-            annot_kws={"size": 7},
-            cbar_kws={"label": "Abs Error (mg/L)"},
+    if len(problem_df) > 0 and len(abserr_cols) > 0:
+        fig, (ax0, ax1) = plt.subplots(
+            2, 1, figsize=(9, 8.5), gridspec_kw={"height_ratios": [1.0, 1.25], "hspace": 0.32}
         )
-        ax.set_title(
-            "Per-Antibody Absolute Error Heatmap\n"
-            "(consistently wrong + sometimes wrong, sorted by # models failing)",
-            fontweight="bold"
+
+        err_series = problem_df["mean_abserr"].dropna()
+        if len(err_series) > 0:
+            use_kde = len(err_series) >= 8
+            sns.histplot(
+                err_series,
+                kde=use_kde,
+                ax=ax0,
+                color="#c0392b",
+                edgecolor="white",
+                alpha=0.85,
+                stat="count",
+            )
+            med = float(err_series.median())
+            ax0.axvline(med, color="#2c3e50", ls="--", lw=1.2, label=f"median = {med:.0f} mg/L")
+            ax0.set_xlabel("Mean absolute error across learners (mg/L)")
+            ax0.set_ylabel("Antibodies")
+            ax0.set_title(
+                "Distribution of mean absolute error\n(consistently wrong + sometimes wrong)",
+                fontweight="bold",
+            )
+            ax0.legend(frameon=False, loc="upper right")
+
+        top_n = min(25, len(problem_df))
+        top = (
+            problem_df.nlargest(top_n, "mean_abserr")
+            .sort_values("mean_abserr", ascending=True)
         )
-        ax.set_xlabel("Base Learner")
-        ax.set_ylabel("Antibody")
-        ax.tick_params(axis="y", labelsize=7)
+        ax1.barh(
+            top["antibody_name"],
+            top["mean_abserr"],
+            color="#e67e22",
+            edgecolor="white",
+            linewidth=0.45,
+        )
+        ax1.set_xlabel("Mean absolute error across learners (mg/L)")
+        ax1.set_ylabel("")
+        ax1.set_title(f"Top {top_n} antibodies by mean absolute error", fontweight="bold")
+
+        fig.suptitle(
+            "Problem antibodies: error spread and worst cases",
+            fontsize=12,
+            fontweight="bold",
+            y=1.02,
+        )
         fig.tight_layout()
-        save(fig, out_dir, "09_error_heatmap.png")
+        save(fig, out_dir, "09_error_top_distribution.png")
 
 
     # ── Plot 10: CDR feature distributions by failure group ──────────────────
