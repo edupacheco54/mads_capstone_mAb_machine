@@ -1,5 +1,5 @@
 """
-failure_eda.py By Alaude Sonnet 4.6 Extended | Prompts by Allen Chezick
+failure_eda.py By Alaude Sonnet 4.6 Extended | Prompts by Allen Chezick, Miranda Thomas
 
 Merges ensemble failure-overlap diagnostics back onto the full GDPa1 246-antibody
 dataframe, then runs exploratory data analysis comparing antibodies that were
@@ -410,7 +410,7 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
             ax0.set_xlabel("Mean absolute error across learners (mg/L)")
             ax0.set_ylabel("Antibodies")
             ax0.set_title(
-                "Distribution of mean absolute error\n(consistently wrong + sometimes wrong)",
+                "Distribution of Mean Absolute Error\n(Consistently Wrong + Sometimes Wrong)",
                 fontweight="bold",
             )
             ax0.legend(frameon=False, loc="upper right")
@@ -420,19 +420,24 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
             problem_df.nlargest(top_n, "mean_abserr")
             .sort_values("mean_abserr", ascending=True)
         )
+        # Drop trailing "mab" from INN-style names for shorter y-axis labels (-mab, -zumab, etc.).
+        _names = top["antibody_name"].astype(str)
+        y_labels = _names.apply(
+            lambda s: s[:-3] if len(s) >= 3 and s.lower().endswith("mab") else s
+        )
         ax1.barh(
-            top["antibody_name"],
+            y_labels,
             top["mean_abserr"],
             color="#e67e22",
             edgecolor="white",
             linewidth=0.45,
         )
-        ax1.set_xlabel("Mean absolute error across learners (mg/L)")
+        ax1.set_xlabel("Mean Absolute Error Across Learners (mg/L)")
         ax1.set_ylabel("")
-        ax1.set_title(f"Top {top_n} antibodies by mean absolute error", fontweight="bold")
+        ax1.set_title(f"Top {top_n} Antibodies by Mean Absolute Error", fontweight="bold")
 
         fig.suptitle(
-            "Problem antibodies: error spread and worst cases",
+            "Problem Antibodies: Error Spread and Worst Cases",
             fontsize=12,
             fontweight="bold",
             y=1.02,
