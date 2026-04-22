@@ -420,12 +420,8 @@ def main(failure_csv: Path, gdpa1_csv: Path, out_dir: Path, cdr_csv: Path | None
             problem_df.nlargest(top_n, "mean_abserr")
             .sort_values("mean_abserr", ascending=True)
         )
-        _names = top["antibody_name"].astype(str)
-        y_labels = _names.apply(
-            lambda s: s[:-3] if len(s) >= 3 and s.lower().endswith("mab") else s
-        )
         ax1.barh(
-            y_labels,
+            top["antibody_name"],
             top["mean_abserr"],
             color="#e67e22",
             edgecolor="white",
