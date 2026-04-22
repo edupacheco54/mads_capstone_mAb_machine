@@ -257,6 +257,7 @@ GDPa1 and GDPa3 datasets are owned by Ginkgo Datapoints and used here under thei
 - `src/CDR_work/` — CDR biophysical feature computation code written by Claude AI (Sonnet 4.6), with prompts and direction by Allen Chezick.
 - `src/pipelines/`, `src/models/`, and `src/prediction_modeling/ensemble_beta_3.py` — pipeline architecture and cleanup assisted by Claude Code (Sonnet 4.6). Core modeling logic and research design by Eduardo Pacheco and Allen Chezick.
 - EDA notebooks (`notebooks/`) — written by Eduardo Pacheco, Allen Chezick, Miranda Thomas.
+- Visulizations (`data/modeling`) - written and created by Miranda Thomas
 
 ### README
 This README was drafted with assistance from Claude Code (Sonnet 4.6).
